@@ -3101,7 +3101,7 @@ namespace mars {
             if (!needRefreshList.empty()) {
                 std::list<std::pair<std::string, int64_t>> reqList;
                 for (std::list<std::string>::iterator it = needRefreshList.begin(); it != needRefreshList.end(); ++it) {
-                    if (reqList.size() < 500) {
+                    if (reqList.size() < 2000) {
                         reqList.push_back(std::pair<std::string, int64_t>(*it, 0));
                     }
                     
