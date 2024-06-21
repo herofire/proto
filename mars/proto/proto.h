@@ -34,6 +34,16 @@
 #define MESSAGE_CONTENT_TYPE_MODIFY_GROUP_ALIAS 111
 #define MESSAGE_CONTENT_TYPE_CHANGE_GROUP_PORTRAIT 112
 
+#define MESSAGE_CONTENT_TYPE_CHANGE_MUTE 113
+#define MESSAGE_CONTENT_TYPE_CHANGE_JOINTYPE 114
+#define MESSAGE_CONTENT_TYPE_CHANGE_PRIVATECHAT 115
+#define MESSAGE_CONTENT_TYPE_CHANGE_SEARCHABLE 116
+#define MESSAGE_CONTENT_TYPE_SET_MANAGER 117
+
+
+
+
+
 #if WFCHAT_PROTO_SERIALIZABLE
 #include "rapidjson/rapidjson.h"
 #include "rapidjson/writer.h"
@@ -125,7 +135,7 @@ namespace mars{
         
         class TGroupInfo : public TSerializable {
         public:
-            TGroupInfo() : target(""), type(0), memberCount(0), updateDt(0) {}
+            TGroupInfo() : target(""), type(0), memberCount(0), updateDt(0), mute(0), joinType(0), privateChat(0), searchable(0) {}
             std::string target;
             std::string name;
             std::string portrait;
@@ -134,6 +144,10 @@ namespace mars{
             int memberCount;
             std::string extra;
             int64_t updateDt;
+            int mute;
+            int joinType;
+            int privateChat;
+            int searchable;
             virtual ~TGroupInfo() {}
 #if WFCHAT_PROTO_SERIALIZABLE
             virtual void Serialize(void *writer) const;
@@ -171,6 +185,8 @@ namespace mars{
             std::string company;
             std::string social;
             std::string extra;
+            std::string friendAlias;
+            std::string groupAlias;
             //0 normal; 1 robot; 2 thing;
             int type;
             int64_t updateDt;
@@ -247,7 +263,8 @@ namespace mars{
             remoteMediaUrl(c.remoteMediaUrl),
             localMediaPath(c.localMediaPath),
             mentionedType(c.mentionedType),
-            mentionedTargets(c.mentionedTargets) {}
+            mentionedTargets(c.mentionedTargets),
+            extra(c.extra) {}
             
             TMessageContent operator=(const TMessageContent &c) {
                 type = c.type;
@@ -261,6 +278,7 @@ namespace mars{
                 localMediaPath = c.localMediaPath;
                 mentionedType = c.mentionedType;
                 mentionedTargets = c.mentionedTargets;
+                extra = c.extra;
                 return *this;
             }
             int type;
@@ -275,6 +293,7 @@ namespace mars{
             
             int mentionedType;
             std::list<std::string> mentionedTargets;
+            std::string extra;
             virtual ~TMessageContent(){
             }
 #if WFCHAT_PROTO_SERIALIZABLE
@@ -589,7 +608,7 @@ namespace mars{
         
         extern bool setAuthInfo(const std::string &userId, const std::string &token);
         extern void Disconnect(uint8_t flag);
-        extern void (*Connect)(const std::string& host, uint16_t shortLinkPort);
+        extern bool Connect(const std::string& host, uint16_t shortLinkPort);
         extern void setConnectionStatusCallback(ConnectionStatusCallback *callback);
         extern void setReceiveMessageCallback(ReceiveMessageCallback *callback);
         extern void setDNSResult(std::vector<std::string> serverIPs);
@@ -613,7 +632,7 @@ namespace mars{
         
         extern void loadRemoteMessages(const TConversation &conv, long long beforeUid, int count, LoadRemoteMessagesCallback *callback);
         
-        extern int uploadGeneralMedia(std::string mediaData, int mediaType, UpdateMediaCallback *callback);
+        extern int uploadGeneralMedia(const std::string fileName, const std::string &mediaData, int mediaType, UpdateMediaCallback *callback);
         
         extern int modifyMyInfo(const std::list<std::pair<int, std::string>> &infos, GeneralOperationCallback *callback);
         
@@ -626,9 +645,11 @@ namespace mars{
         extern void loadFriendFromRemote();
         extern void handleFriendRequest(const std::string &userId, bool accept, GeneralOperationCallback *callback);
         extern void deleteFriend(const std::string &userId, GeneralOperationCallback *callback);
+        extern void setFriendAlias(const std::string &userId, const std::string &alias, GeneralOperationCallback *callback);
+        
         extern void blackListRequest(const std::string &userId, bool blacked, GeneralOperationCallback *callback);
         
-        extern void (*createGroup)(const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback);
+        extern void (*createGroup)(const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, int groupType, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback);
         
         extern void (*addMembers)(const std::string &groupId, const std::list<std::string> &members, const std::list<int> &notifyLines, TMessageContent &content, GeneralOperationCallback *callback);
         
@@ -647,6 +668,8 @@ namespace mars{
         extern void (*getGroupMembers)(const std::string &groupId, int64_t updateDt);
         
         extern void (*transferGroup)(const std::string &groupId, const std::string &newOwner, const std::list<int> &notifyLines, TMessageContent &content, GeneralOperationCallback *callback);
+        
+        extern void SetGroupManager(const std::string &groupId, const std::list<std::string> userIds, int setOrDelete, const std::list<int> &notifyLines, TMessageContent &content, GeneralOperationCallback *callback);
         
         extern void (*getUserInfo)(const std::list<std::pair<std::string, int64_t>> &userReqList, GetUserInfoCallback *callback);
         
@@ -675,6 +698,8 @@ namespace mars{
         extern void searchChannel(const std::string &keyword, bool puzzy, SearchChannelCallback *callback);
         
         extern void listenChannel(const std::string &channelId, bool listen, GeneralOperationCallback *callback);
+        
+        extern std::string GetImageThumbPara();
     }
 }
 

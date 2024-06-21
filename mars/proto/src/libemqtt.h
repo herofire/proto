@@ -32,7 +32,7 @@
 #include "mars/comm/autobuffer.h"
 
 #ifndef MQTT_CONF_USERNAME_LENGTH
-	#define MQTT_CONF_USERNAME_LENGTH 48 // Recommended by MQTT Specification (12 + '\0')
+	#define MQTT_CONF_USERNAME_LENGTH 64 // Recommended by MQTT Specification (12 + '\0')
 #endif
 
 #ifndef MQTT_CONF_PASSWORD_LENGTH

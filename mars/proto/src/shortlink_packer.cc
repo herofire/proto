@@ -28,12 +28,13 @@
 using namespace http;
 
 extern unsigned char * encrypt_data(const unsigned char* data, unsigned int data_length, unsigned int *output_length, bool rootKey);
+extern unsigned char * decrypt_data(const unsigned char* data, unsigned int data_length, unsigned int *output_length, bool rootKey, bool checkTime);
 
 static std::string encodedClientId;
 static std::string encodedUserId;
 
 namespace mars { namespace stn {
-    std::string getEncodedId(std::string id) {
+    std::string getEncodedId(const std::string &id) {
         
         
         unsigned int tmpLen = 0;
@@ -74,6 +75,63 @@ namespace mars { namespace stn {
             encodedClientId = getEncodedId(mars::app::GetDeviceInfo().clientid);
             return encodedClientId;
         }
+    }
+    
+    std::string GetEncodedCid() {
+        return getEncodedId(false);
+    }
+    
+    std::string GetEncodeData(std::string pbData) {
+        unsigned int tmpLen = 0;
+        unsigned char *ptmp = encrypt_data((const unsigned char*)pbData.c_str(), (unsigned int)pbData.length(), &tmpLen, false);
+        
+        int dstlen = modp_b64_encode_len(tmpLen);
+        
+        unsigned char* dstbuf = (unsigned char*)malloc(dstlen);
+        memset(dstbuf, 0, dstlen);
+        
+        int retsize = Comm::EncodeBase64(ptmp, (unsigned char*)dstbuf, tmpLen);
+        dstbuf[retsize] = '\0';
+        
+        free(ptmp);
+        ptmp = NULL;
+        tmpLen = 0;
+        
+        tmpLen = retsize;
+        ptmp = dstbuf;
+        
+        std::string out((char*)ptmp, tmpLen);
+        
+        free(ptmp);
+        ptmp = NULL;
+        tmpLen = 0;
+        return out;
+    }
+    
+    std::string GetEncodeDataEx(std::string pbData) {
+        unsigned int tmpLen = 0;
+        unsigned char *ptmp = encrypt_data((const unsigned char*)pbData.c_str(), (unsigned int)pbData.length(), &tmpLen, false);
+        std::string out((char*)ptmp, tmpLen);
+        
+        free(ptmp);
+        ptmp = NULL;
+        tmpLen = 0;
+        
+        return out;
+    }
+    
+    std::string GetDecodeData(std::string data) {
+        if (data.length() == 0) {
+            return "";
+        }
+        unsigned int dataLen = 0;
+        unsigned char* pdata = (unsigned char* )decrypt_data((const unsigned char*)data.c_str(), (unsigned int)data.length(), &dataLen, false, false);
+        if (dataLen == 0) {
+            return "";
+        }
+        std::string str((char*)pdata, dataLen);
+        free(pdata);
+        return str;
     }
     
     std::map<std::string, std::string> stringToMap(std::string &str)
@@ -124,47 +182,26 @@ void (*shortlink_pack)(const std::string& _url, const std::map<std::string, std:
     req_builder.Fields().HeaderFiled("cid", getEncodedId(false).c_str());
       if(_url == "/route") {
           encodedUserId.clear();
+          req_builder.Fields().HeaderFiled("uid", getEncodedId(true).c_str());
       }
-    req_builder.Fields().HeaderFiled("uid", getEncodedId(true).c_str());
     
     for (std::map<std::string, std::string>::const_iterator iter = _headers.begin(); iter != _headers.end(); ++iter) {
       req_builder.Fields().HeaderFiled(iter->first.c_str(), iter->second.c_str());
     }
     std::string pbData = wrapper.serializeToPBData();
       
-      unsigned int tmpLen = 0;
-      unsigned char *ptmp = encrypt_data((const unsigned char*)pbData.c_str(), (unsigned int)pbData.length(), &tmpLen, false);
+      std::string encodedData = GetEncodeData(pbData);
       
+      char buffer[9];
+      memset(buffer, 0, 9);
+      sprintf(buffer, "%d", (int)encodedData.length());
       
-      
-      int dstlen = modp_b64_encode_len(tmpLen);
-      
-      unsigned char* dstbuf = (unsigned char*)malloc(dstlen);
-      memset(dstbuf, 0, dstlen);
-      
-      int retsize = Comm::EncodeBase64(ptmp, (unsigned char*)dstbuf, tmpLen);
-      dstbuf[retsize] = '\0';
-      
-      free(ptmp);
-      ptmp = NULL;
-      tmpLen = 0;
-      
-      tmpLen = retsize;
-      ptmp = dstbuf;
-      
-    char buffer[9];
-    memset(buffer, 0, 9);
-    sprintf(buffer, "%d", (int)tmpLen);
     req_builder.Fields().HeaderFiled(http::HeaderFields::KStringContentLength, buffer);
     req_builder.Fields().HeaderFiled(http::HeaderFields::KStringContentType, "application/octet-stream");
 
     req_builder.Request().Url(_url);
     req_builder.HeaderToBuffer(_out_buff);
-    _out_buff.Write(ptmp, tmpLen);
-      
-      free(ptmp);
-      ptmp = NULL;
-      tmpLen = 0;
+    _out_buff.Write(encodedData.c_str(), encodedData.length());
   } else {
     std::map<std::string, std::string> parsedMap = stringToMap(strMap);
     std::string method = parsedMap["method"];

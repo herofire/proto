@@ -28,12 +28,20 @@
 #include "mars/proto/src/DB2.h"
 #include <sstream>
 #include <map>
+#include <set>
 #include "mars/comm/http.h"
 #include "mars/app/app.h"
 #include "mars/app/app_logic.h"
 #include "mars/stn/stn.h"
 #include <sys/time.h>
 #include <time.h>
+#include <sys/types.h>
+#include <algorithm>
+#include "gzip/decompress.hpp"
+#include "gzip/utils.hpp"
+#include "gzip/version.hpp"
+
+#include <boost/lexical_cast.hpp>
 
 void (*shortlink_progress)(uint32_t task_id, uint32_t writed, uint32_t total) =
 [](uint32_t task_id, uint32_t writed, uint32_t total) {
@@ -48,8 +56,13 @@ void (*shortlink_progress)(uint32_t task_id, uint32_t writed, uint32_t total) =
 	}
 };
 
+extern unsigned char * encrypt_data(const unsigned char* data, unsigned int data_length, unsigned int *output_length, bool rootKey);
+
 namespace mars {
     namespace stn {
+    
+    extern std::string getEncodedId(bool isUserId);
+    
 //        extern const std::string recallMessageTopic;
         const std::string pullMessageTopic = "MP";
         const std::string notifyMessageTopic = "MN";
@@ -197,17 +210,18 @@ void StnCallBack::onPullMsgSuccess(std::list<TMessage> messageList, int64_t curr
         currentChatroomHead = current;
     }
     MessageDB::Instance()->UpdateMessageTimeline(current);
-    PullMessage(head, pullType, false, refreshSetting);
     
     if(m_receiveMessageCB) {
         m_receiveMessageCB->onReceiveMessage(messageList, head > current);
     }
+    
+    PullMessage(head, pullType, false, refreshSetting);
 }
-void StnCallBack::onPullMsgFailure(int errorCode, int pullType) {
+void StnCallBack::onPullMsgFailure(int errorCode, int pullType, bool refreshSetting) {
     if (pullType != Pull_ChatRoom) {
         isPullingMsg = false;
         pullRetryCount++;
-        PullMessage(0x7FFFFFFFFFFFFFFF, pullType, true, false);
+        PullMessage(0x7FFFFFFFFFFFFFFF, pullType, true, refreshSetting);
     } else {
         isPullingChatroomMsg = false;
     }
@@ -229,6 +243,7 @@ void StnCallBack::onPullMsgFailure(int errorCode, int pullType) {
             tmsg.content.remoteMediaUrl = pmsg.content.remoteMediaUrl;
             tmsg.content.mentionedType = pmsg.content.mentionedType;
             tmsg.content.mentionedTargets = pmsg.content.mentionedTargets;
+            tmsg.content.extra = pmsg.content.extra;
             
             tmsg.from = pmsg.fromUser;
             tmsg.to = pmsg.tos;
@@ -257,6 +272,22 @@ void StnCallBack::onPullMsgFailure(int errorCode, int pullType) {
             }
             
             if (saveToDb) {
+                if (tmsg.content.type == 80) {
+                    int64_t messageUid = boost::lexical_cast<int64_t>(tmsg.content.binaryContent);
+                    
+                    TMessage tOldMsg = MessageDB::Instance()->GetMessageByUid(messageUid);
+                    if(tOldMsg.messageId > 0) {
+                        
+                        tmsg.messageId = tOldMsg.messageId;
+                        MessageDB::Instance()->UpdateMessageContent(tmsg.messageId, tmsg.content);
+                        
+                        if(m_receiveMessageCB) {
+                            m_receiveMessageCB->onRecallMessage(tmsg.from, messageUid);
+                        }
+                        return;
+                    }
+                }
+                
                 long id = MessageDB::Instance()->InsertMessage(tmsg);
                 tmsg.messageId = id;
                 
@@ -284,54 +315,81 @@ void StnCallBack::onPullMsgFailure(int errorCode, int pullType) {
                     if (result.messages.size() > 100 && mPullType != Pull_ChatRoom) {
                         isBegin = DB2::Instance()->BEGIN();
                     }
+                    std::set<std::string> needUpdateGroup;
+                    std::set<std::string> needUpdateGroupMember;
                     for (std::list<Message>::iterator it = result.messages.begin(); it != result.messages.end(); it++) {
                         TMessage tmsg;
                         StnCallBack::Instance()->converProtoMessage(*it, tmsg, true, curUser);
                         messageList.push_back(tmsg);
                         
-//                        #define MESSAGE_CONTENT_TYPE_CREATE_GROUP 104
-//                        #define MESSAGE_CONTENT_TYPE_ADD_GROUP_MEMBER 105
-//                        #define MESSAGE_CONTENT_TYPE_KICKOF_GROUP_MEMBER 106
-//                        #define MESSAGE_CONTENT_TYPE_QUIT_GROUP 107
-//                        #define MESSAGE_CONTENT_TYPE_DISMISS_GROUP 108
-//                        #define MESSAGE_CONTENT_TYPE_TRANSFER_GROUP_OWNER 109
+//#define MESSAGE_CONTENT_TYPE_CREATE_GROUP 104
+//#define MESSAGE_CONTENT_TYPE_ADD_GROUP_MEMBER 105
+//#define MESSAGE_CONTENT_TYPE_KICKOF_GROUP_MEMBER 106
+//#define MESSAGE_CONTENT_TYPE_QUIT_GROUP 107
+//#define MESSAGE_CONTENT_TYPE_DISMISS_GROUP 108
+//#define MESSAGE_CONTENT_TYPE_TRANSFER_GROUP_OWNER 109
+//
 //#define MESSAGE_CONTENT_TYPE_CHANGE_GROUP_NAME 110
 //#define MESSAGE_CONTENT_TYPE_MODIFY_GROUP_ALIAS 111
 //#define MESSAGE_CONTENT_TYPE_CHANGE_GROUP_PORTRAIT 112
+//
+//#define MESSAGE_CONTENT_TYPE_CHANGE_MUTE 113
+//#define MESSAGE_CONTENT_TYPE_CHANGE_JOINTYPE 114
+//#define MESSAGE_CONTENT_TYPE_CHANGE_PRIVATECHAT 115
+//#define MESSAGE_CONTENT_TYPE_CHANGE_SEARCHABLE 116
+//#define MESSAGE_CONTENT_TYPE_SET_MANAGER 117
+
                         if (tmsg.conversationType == 1) {
                             if (tmsg.content.type == MESSAGE_CONTENT_TYPE_CREATE_GROUP
                                 || tmsg.content.type == MESSAGE_CONTENT_TYPE_ADD_GROUP_MEMBER
                                 || tmsg.content.type == MESSAGE_CONTENT_TYPE_KICKOF_GROUP_MEMBER
                                 || tmsg.content.type == MESSAGE_CONTENT_TYPE_TRANSFER_GROUP_OWNER
                                 || tmsg.content.type == MESSAGE_CONTENT_TYPE_MODIFY_GROUP_ALIAS) {
-                                MessageDB::Instance()->GetGroupInfo(tmsg.target, true);
-                                MessageDB::Instance()->GetGroupMembers(tmsg.target, true);
-                            } else if (tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_GROUP_NAME
-                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_GROUP_PORTRAIT) {
-                                MessageDB::Instance()->GetGroupInfo(tmsg.target, true);
-                            } else if (tmsg.content.type == MESSAGE_CONTENT_TYPE_QUIT_GROUP
-                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_DISMISS_GROUP) {
+                                needUpdateGroup.insert(tmsg.target);
+                                needUpdateGroupMember.insert(tmsg.target);
+                            } else if(tmsg.content.type == MESSAGE_CONTENT_TYPE_SET_MANAGER) {
+                                needUpdateGroupMember.insert(tmsg.target);
+                            } else  if (tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_GROUP_NAME
+                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_GROUP_PORTRAIT
+                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_MUTE
+                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_JOINTYPE
+                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_PRIVATECHAT
+                                       || tmsg.content.type == MESSAGE_CONTENT_TYPE_CHANGE_SEARCHABLE) {
+                                needUpdateGroup.insert(tmsg.target);
+                            } else if (tmsg.content.type == MESSAGE_CONTENT_TYPE_QUIT_GROUP) {
+                                if (tmsg.from == curUser) {
+                                    MessageDB::Instance()->RemoveGroupAndMember(tmsg.target);
+                                    MessageDB::Instance()->ClearUnreadStatus(tmsg.conversationType, tmsg.target, tmsg.line);
+                                    MessageDB::Instance()->RemoveConversation(tmsg.conversationType, tmsg.target, tmsg.line);
+                                }
+                            } else if (tmsg.content.type == MESSAGE_CONTENT_TYPE_DISMISS_GROUP) {
                                 MessageDB::Instance()->RemoveGroupAndMember(tmsg.target);
                                 MessageDB::Instance()->ClearUnreadStatus(tmsg.conversationType, tmsg.target, tmsg.line);
                                 MessageDB::Instance()->RemoveConversation(tmsg.conversationType, tmsg.target, tmsg.line);
                             }
                         }
                     }
+                    
+                    for (std::set<std::string>::iterator it = needUpdateGroup.begin(); it != needUpdateGroup.end(); it++) {
+                        MessageDB::Instance()->GetGroupInfo(*it, true);
+                    }
+                    
+                    for (std::set<std::string>::iterator it = needUpdateGroupMember.begin(); it != needUpdateGroupMember.end(); it++) {
+                        MessageDB::Instance()->GetGroupMembers(*it, true);
+                    }
+                    
                     if(isBegin) {
                         DB2::Instance()->COMMIT();
                     }
                     
                     cb->onPullMsgSuccess(messageList, result.current, result.head, mPullType, mRefreshSetting);
-                    if (mRefreshSetting) {
-                        StnCallBack::Instance()->PullSetting(0x7FFFFFFFFFFFFFFF);
-                    }
                 } else {
-                    cb->onPullMsgFailure(-1, mPullType);
+                    cb->onPullMsgFailure(-1, mPullType, mRefreshSetting);
                 }
                 delete this;
             };
             void onFalure(int errorCode) {
-                cb->onPullMsgFailure(errorCode, mPullType);
+                cb->onPullMsgFailure(errorCode, mPullType, mRefreshSetting);
                 delete this;
             };
             virtual ~PullingMessagePublishCallback() {
@@ -347,6 +405,9 @@ void StnCallBack::PullMessage(int64_t head, int type, bool retry, bool refreshSe
         if (isPullingMsg || currentHead >= head) {
             if (currentHead >= head && m_connectionStatus != kConnectionStatusConnected) {
                 updateConnectionStatus(kConnectionStatusConnected);
+                if (refreshSetting) {
+                    StnCallBack::Instance()->PullSetting(0x7FFFFFFFFFFFFFFF);
+                }
             }
             return;
         }
@@ -401,10 +462,11 @@ void StnCallBack::PullMessage(int64_t head, int type, bool retry, bool refreshSe
                     if (maxDt > 0) {
                         StnCallBack::Instance()->settingHead = maxDt;
                     }
+                    MessageDB::Instance()->UpdateUserSettings(retList);
+
                   if(StnCallBack::Instance()->m_getSettingCB != NULL) {
                     StnCallBack::Instance()->m_getSettingCB->onSuccess(retList.size() > 0);
                   }
-                    MessageDB::Instance()->UpdateUserSettings(retList);
                 } else {
                   if(StnCallBack::Instance()->m_getSettingCB != NULL) {
                     StnCallBack::Instance()->m_getSettingCB->onFalure(-1);
@@ -520,50 +582,133 @@ void StnCallBack::OnPush(uint64_t _channel_id, uint32_t _cmdid, uint32_t _taskid
         
 static const std::string UploadBoundary = "--727f6ee7446cbf7263";
 
-void packageUploadMediaData(const std::string &data, AutoBuffer& _out_buff, AutoBuffer& _extend, unsigned char mediaType, const std::string &uploadToken) {
+        void packageUploadMediaData(const std::string &data, AutoBuffer& _out_buff, AutoBuffer& _extend, unsigned char mediaType, const std::string &uploadToken, const std::string &key, int type, const std::string &date, const std::string &fileName) {
     
-    std::string fileName;
-    std::stringstream ss;
-    ss << mars::app::GetAccountUserName();
-    ss << "-";
-    ss << time(NULL);
-    ss << "-";
-    ss << rand()%10000;
-    ss >> fileName;
+            char len_str[32] = {0};
+            if (type < 2) {
+                std::string fileName = key;
+                
+                std::string mimeType;
+                if (mediaType == 1) {
+                    mimeType = "image_jpeg";
+                } else if(mediaType == 2) {
+                    mimeType = "audio_amr";
+                } else {
+                    mimeType = "application_octet-stream";
+                }
+                
+                std::string firstBody = "--" + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"token\"\r\n\r\n"
+                + uploadToken + "\r\n--" + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"key\"\r\n\r\n" + fileName + "\r\n--"
+                + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mimeType + "\r\n\r\n";
+                
+                std::string lastBody =  "\r\n--" + UploadBoundary + "--";
+                
+                unsigned int dataLen = (unsigned int)(data.size() + firstBody.length() + lastBody.length());
+                char len_str[32] = {0};
+                snprintf(len_str, sizeof(len_str), "%u", dataLen);
+                
+                _out_buff.AllocWrite(dataLen);
+                _out_buff.Write(firstBody.c_str(), firstBody.length());
+                _out_buff.Write(data.c_str(), data.length());
+                _out_buff.Write(lastBody.c_str(), lastBody.length());
+                
+                std::map<std::string, std::string> paramMap;
+                paramMap["method"] = "POST";
+                paramMap[http::HeaderFields::KStringContentType] = "multipart/form-data; boundary=" + UploadBoundary;
+                paramMap[http::HeaderFields::KStringContentLength] = len_str;
+                
+                
+                std::string mapStr = mapToString(paramMap);
+                _extend.AllocWrite(mapStr.size());
+                _extend.Write(mapStr.c_str(), mapStr.size());
+            } else if(type >= 2) {
+                if (type == 3) {
+                    unsigned int tmpLen = 0;
+                    unsigned char *ptmp = encrypt_data((const unsigned char*)data.c_str(), (unsigned int)data.length(), &tmpLen, false);
+                    std::string out((char*)ptmp, tmpLen);
+                    snprintf(len_str, sizeof(len_str), "%u", tmpLen);
+                    
+                    _out_buff.AllocWrite(tmpLen);
+                    _out_buff.Write(ptmp, tmpLen);
+                    
+                    free(ptmp);
+                    ptmp = NULL;
+                    tmpLen = 0;
+                } else {
+                    unsigned int dataLen = (unsigned int)data.size();
+                
+                    snprintf(len_str, sizeof(len_str), "%u", dataLen);
+                
+                    _out_buff.AllocWrite(dataLen);
+                    _out_buff.Write(data.c_str(), data.length());
+                }
+                
+                std::map<std::string, std::string> paramMap;
+                paramMap["method"] = "PUT";
+                
+                
+                std::string subfix;
+                size_t pos = fileName.find_last_of('.');
+                if (pos > 0 && pos < fileName.length()-1) {
+                    subfix = fileName.substr(pos+1, fileName.length() - pos+1);
+                }
+                
+                if (mediaType == 1) {
+                    paramMap[http::HeaderFields::KStringContentType] = "image/jpeg";
+                } else if(mediaType == 2) {
+                    paramMap[http::HeaderFields::KStringContentType] = "audio/amr";
+                } else if(mediaType == 3) {
+                    paramMap[http::HeaderFields::KStringContentType] = "video/mp4";
+                } else {
+                    if (!subfix.empty()) {
+                        std::transform(subfix.begin(), subfix.end(), subfix.begin(), ::tolower);
+                        if (subfix == "jpg" || subfix == "jpeg") {
+                            paramMap[http::HeaderFields::KStringContentType] = "image/jpeg";
+                        } else if(subfix == "gif") {
+                            paramMap[http::HeaderFields::KStringContentType] = "image/gif";
+                        } else if(subfix == "png") {
+                            paramMap[http::HeaderFields::KStringContentType] = "image/png";
+                        } else if(subfix == "mp3") {
+                            paramMap[http::HeaderFields::KStringContentType] = "audio/mpeg";
+                        } else if(subfix == "mp4") {
+                            paramMap[http::HeaderFields::KStringContentType] = "video/mp4";
+                        } else if(subfix == "doc" || subfix == "docx") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/vnd.ms-word";
+                        } else if(subfix == "xls" || subfix == "xlsx") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/vnd.ms-xls";
+                        } else if(subfix == "ppt" || subfix == "pptx") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/vnd.ms-powerpoint";
+                        } else if(subfix == "pps") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/vnd.ms-powerpoint";
+                        } else if(subfix == "pdf") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/pdf";
+                        } else if(subfix == "xml") {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/vnd.ms-xml";
+                        } else {
+                            paramMap[http::HeaderFields::KStringContentType] = "application/octet-stream";
+                        }
+                    } else {
+                        paramMap[http::HeaderFields::KStringContentType] = "application/octet-stream";
+                    }
+                }
+                paramMap[http::HeaderFields::KStringContentLength] = len_str;
+                paramMap[http::HeaderFields::KStringAuthorization] = uploadToken;
+                if(type == 2) {
+                    paramMap[http::HeaderFields::KStringDate] = date;
+                } else if (type == 3) {
+                    paramMap["x-amz-date"] = date;
+                    paramMap["x-wfc-cid"] = getEncodedId(false).c_str();
+                    paramMap["x-wfc-uid"] = getEncodedId(true).c_str();
+                    char data_len_str[32] = {0};
+                    snprintf(data_len_str, sizeof(data_len_str), "%lu", data.size());
+                    paramMap["x-wfc-size"] = data_len_str;
+                }
+                
+                std::string mapStr = mapToString(paramMap);
+                _extend.AllocWrite(mapStr.size());
+                _extend.Write(mapStr.c_str(), mapStr.size());
+            }
     
-    std::string mimeType;
-    if (mediaType == 3) {
-        mimeType = "image_jpeg";
-    } else if(mediaType == 2) {
-        mimeType = "audio_amr";
-    } else {
-        mimeType = "application_octet-stream";
-    }
-    
-    std::string firstBody = "--" + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"token\"\r\n\r\n"
-    + uploadToken + "\r\n--" + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"key\"\r\n\r\n" + fileName + "\r\n--"
-    + UploadBoundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mimeType + "\r\n\r\n";
-    
-    std::string lastBody =  "\r\n--" + UploadBoundary + "--";
-    
-    unsigned int dataLen = (unsigned int)(data.size() + firstBody.length() + lastBody.length());
-    char len_str[32] = {0};
-    snprintf(len_str, sizeof(len_str), "%u", dataLen);
-    
-    _out_buff.AllocWrite(dataLen);
-    _out_buff.Write(firstBody.c_str(), firstBody.length());
-    _out_buff.Write(data.c_str(), data.length());
-    _out_buff.Write(lastBody.c_str(), lastBody.length());
-    
-    std::map<std::string, std::string> paramMap;
-    paramMap["method"] = "POST";
-    paramMap[http::HeaderFields::KStringContentType] = "multipart/form-data; boundary=" + UploadBoundary;
-    paramMap[http::HeaderFields::KStringContentLength] = len_str;
-    
-    
-    std::string mapStr = mapToString(paramMap);
-    _extend.AllocWrite(mapStr.size());
-    _extend.Write(mapStr.c_str(), mapStr.size());
 }
 
 
@@ -572,7 +717,7 @@ bool StnCallBack::Req2Buf(uint32_t _taskid, void* const _user_context, AutoBuffe
     Task *task = (Task *)_user_context;
     if(task->cmdid == UPLOAD_SEND_OUT_CMDID) {
         UploadTask *uploadTask = (UploadTask *)_user_context;
-        packageUploadMediaData(uploadTask->mData, _outbuffer, _extend, uploadTask->mMediaType, uploadTask->mToken);;
+        packageUploadMediaData(uploadTask->mData, _outbuffer, _extend, uploadTask->mMediaType, uploadTask->mToken, uploadTask->mKey, uploadTask->mType, uploadTask->mDate, uploadTask->mFileName);
     } else { //MQTT tasks
       const MQTTTask *mqttTask = (const MQTTTask *)_user_context;
       if (mqttTask->type == MQTT_MSG_PUBLISH) {
@@ -616,24 +761,29 @@ int StnCallBack::Buf2Resp(uint32_t _taskid, void* const _user_context, const Aut
     
     if(task->cmdid == UPLOAD_SEND_OUT_CMDID) {
         UploadTask *uploadTask = (UploadTask *)_user_context;
-
-        std::string result((char *)_inbuffer.Ptr(), _inbuffer.Length());
-        long index = result.find("\"key\":\"");
-        if (index > 0 && index < INT_MAX) {
-            std::string rest = result.substr(index + 7);
-            index = rest.find("\"");
+        if (uploadTask->mType < 2) {
+            std::string result((char *)_inbuffer.Ptr(), _inbuffer.Length());
+            long index = result.find("\"key\":\"");
             if (index > 0 && index < INT_MAX) {
-                std::string key = rest.substr(0, index);
-                if (!key.empty()) {
-                    xinfo2(TSF"PROTO -> Upload success:%0", key);
-                    uploadTask->mCallback->onSuccess(key);
-                    return mars::stn::kTaskFailHandleNormal;
+                std::string rest = result.substr(index + 7);
+                index = rest.find("\"");
+                if (index > 0 && index < INT_MAX) {
+                    std::string key = rest.substr(0, index);
+                    if (!key.empty()) {
+                        xinfo2(TSF"PROTO -> Upload success:%0", key);
+                        uploadTask->mCallback->onSuccess(key);
+                        return mars::stn::kTaskFailHandleNormal;
+                    }
                 }
             }
+            xinfo2(TSF"PROTO -> Upload failure:%0", result);
+            uploadTask->mCallback->onFalure(-1);
+            return mars::stn::kTaskFailHandleNormal;
+        } else {
+            uploadTask->mCallback->onSuccess(uploadTask->mKey);
+            return mars::stn::kTaskFailHandleNormal;
         }
-        xinfo2(TSF"PROTO -> Upload failure:%0", result);
-        uploadTask->mCallback->onFalure(-1);
-        return mars::stn::kTaskFailHandleNormal;
+        
     }
     
   const MQTTTask *mqttTask = (const MQTTTask *)_user_context;
@@ -641,16 +791,24 @@ int StnCallBack::Buf2Resp(uint32_t _taskid, void* const _user_context, const Aut
       xinfo2(TSF"PROTO -> TASK(%0) has response", task->description());
       xinfo2(TSF"PROTO -> TASK errorcode:%0", _error_code);
     const MQTTPublishTask *publishTask = (const MQTTPublishTask *)_user_context;
-      if (_error_code == 0) {
+      if (_error_code == 0 || _error_code == 255) {
           if (_inbuffer.Length() < 1) {
               if(publishTask->m_callback)
                   publishTask->m_callback->onFalure(kEcProtoCorruptData);
           } else {
               unsigned char *p = (unsigned char *)_inbuffer.Ptr();
               xinfo2(TSF"PROTO -> TASK business code:%0(0success, otherwise failure)", *p);
-              if (*p == 0) {
+              if (*p == 0 || *p == 255) {
+                  if (*p == 255) {
+                      unsigned char *pData = (unsigned char *)(_inbuffer.Ptr()) + 1;
+                      unsigned int length = (unsigned int)(_inbuffer.Length()-1);
+                      std::string strData = gzip::decompress((char*)pData, length, NULL);
+                      if(publishTask->m_callback)
+                          publishTask->m_callback->onSuccess((const unsigned char *)strData.c_str(), strData.length());
+                  } else {
                   if(publishTask->m_callback)
-                  publishTask->m_callback->onSuccess((const unsigned char *)(_inbuffer.Ptr()) + 1, (unsigned int)(_inbuffer.Length()-1));
+                      publishTask->m_callback->onSuccess((const unsigned char *)(_inbuffer.Ptr()) + 1, (unsigned int)(_inbuffer.Length()-1));
+                  }
               } else {
                   if(publishTask->m_callback)
                       publishTask->m_callback->onFalure(*p);

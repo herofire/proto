@@ -245,6 +245,10 @@ extern bool (*OnLonglinkIdentifyResponse)(const AutoBuffer& response_buffer, con
 
 extern void (*RequestSync)();
 
+extern std::string GetEncodedCid();
+        
+extern std::string GetEncodeDataEx(std::string pbData);
+extern std::string GetDecodeData(std::string data);
 
 //底层询问上层http网络检查的域名列表 
 extern void (*RequestNetCheckShortLinkHosts)(std::vector<std::string>& _hostlist);

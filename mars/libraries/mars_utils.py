@@ -7,28 +7,14 @@ import getpass
 
 RELATIVE_PATH = os.path.join(os.path.split(os.path.realpath(__file__))[0], "../")
 
-APPLE_COPY_EXT_FILES = {"stn/proto/longlink_packer.h": "longlink_packer.h",
-        "stn/proto/longlink_packer.cc": "longlink_packer.cc.rewriteme",
-        "stn/proto/stnproto_logic.h": "stnproto_logic.h",
-        "comm/socket/local_ipstack.h": "mars.framework/Headers/comm/local_ipstack.h",
+APPLE_COPY_EXT_FILES = {"comm/socket/local_ipstack.h": "mars.framework/Headers/comm/local_ipstack.h",
         "comm/socket/nat64_prefix_util.h": "mars.framework/Headers/comm/nat64_prefix_util.h",
         "comm/has_member.h" : "mars.framework/Headers/comm/has_member.h",
         "comm/objc/scope_autoreleasepool.h": "mars.framework/Headers/comm/scope_autoreleasepool.h",
         "comm/objc/ThreadOperationQueue.h": "mars.framework/Headers/comm/ThreadOperationQueue.h",
-        "log/crypt/log_crypt.cc": "log_crypt.cc.rewriteme",
-        "log/crypt/log_crypt.h": "log_crypt.h",
-        "stn/proto/shortlink_packer.h": "shortlink_packer.h",
-        "stn/proto/shortlink_packer.cc": "shortlink_packer.cc.rewriteme",
         }
-        
-WIN_COPY_EXT_FILES = {"stn/proto/longlink_packer.h": "longlink_packer.h",
-        "stn/proto/longlink_packer.cc": "longlink_packer.cc.rewriteme",
-        "stn/proto/stnproto_logic.h": "stnproto_logic.h",
-        "log/crypt/log_crypt.cc": "log_crypt.cc.rewriteme",
-        "log/crypt/log_crypt.h": "log_crypt.h",
-        "stn/proto/shortlink_packer.h": "shortlink_packer.h",
-        "stn/proto/shortlink_packer.cc": "shortlink_packer.cc.rewriteme",
-        "comm/windows/projdef.h": "include/mars/comm/windows/projdef.h",
+
+WIN_COPY_EXT_FILES = {"comm/windows/projdef.h": "include/mars/comm/windows/projdef.h",
         "comm/windows/sys/cdefs.h": "include/mars/comm/windows/sys/cdefs.h",
         "comm/windows/sys/time.h": "include/mars/comm/windows/sys/time.h"
         }
@@ -177,7 +163,7 @@ def get_revision(path):
     revision = os.popen("git rev-parse --short HEAD").read()
     if revision:
         return "git-" + revision[:len(revision)-1]
-    
+
     return ""
 
 
@@ -248,7 +234,7 @@ def check_ndk_env():
 
     if "Windows" == system:
         delimiter = ";"
-        
+
     path_array = path_env.split(delimiter)
 
     ndk_path = None
@@ -265,7 +251,7 @@ def check_ndk_env():
         return False
 
     ndk_revision = None
-    
+
     f = open(os.path.join(ndk_path, "source.properties"))
     line = f.readline()
     while line:
@@ -287,12 +273,12 @@ def check_ndk_env():
 
     print("Error: make sure ndk's version >= r11c")
     return False
-    
+
 
 def check_env():
 
     return check_python_version() and check_ndk_env()
-    
+
 
 
 def main(save_path, tag):

@@ -189,9 +189,9 @@ def main():
     if 2 <= len(sys.argv):
         prefix = sys.argv[1]
     else:
-        prefix = 'trunk'#raw_input("input prefix for save directory. like `trunk`,`br`,`tag`: ").strip()
+        prefix = 'iOS'#raw_input("input prefix for save directory. like `trunk`,`br`,`tag`: ").strip()
 
-    save_path = prefix + "_[%s]@%s@%s" % (time.strftime('%Y-%m-%d_%H.%M', time.localtime()), get_revision(RELATIVE_PATH), getpass.getuser())
+    save_path = prefix + "_release"
 
     while True:
         num = "1"#raw_input("\033[0;33mEnter menu:\n1. build mars for iphone.\n2. build mars for iphone with bitcode.\n3. build xlog for iphone\n4. build mars for macosx.\n5. build all.\n6. exit.\033[0m\n").strip()

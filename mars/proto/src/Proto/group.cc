@@ -27,6 +27,11 @@ namespace mars{
             updateDt = getInt64(msg, keyUpdateDt, 0);
             memberUpdateDt = getInt64(msg, keyMemberUpdateDt, 0);
             
+            mute = getInt(msg, keyMute, 0);
+            joinType = getInt(msg, keyJoinType, 0);
+            privateChat = getInt(msg, keyPrivateChat, 0);
+            searchable = getInt(msg, keySearchable, 0);
+            
             if(destroy)
             finishRead(msg);
             return true;

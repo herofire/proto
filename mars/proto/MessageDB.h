@@ -50,6 +50,11 @@ namespace mars {
             bool ClearMessages(int conversationType, const std::string &target, int line);
             
             std::list<TMessage> GetMessages(int conversationType, const std::string &target, int line, const std::list<int> &contentTypes, bool desc, int count, long startPoint, const std::string &withUser);
+            
+            std::list<TMessage> GetMessages(const std::list<int> &conversationTypes, const std::list<int> &lines, const std::list<int> &contentTypes, bool desc, int count, long startPoint, const std::string &withUser);
+            
+            std::list<TMessage> GetMessages(const std::list<int> &conversationTypes, const std::list<int> &lines, const int messageStatus, bool desc, int count, long startPoint, const std::string &withUser);
+
           
             TMessage GetMessageById(long messageId);
             TMessage GetMessageByUid(long long messageUid);
@@ -65,6 +70,7 @@ namespace mars {
             
             TUnreadCount GetUnreadCount(const std::list<int> &conversationTypes, const std::list<int> lines);
             bool ClearUnreadStatus(int conversationType, const std::string &target, int line);
+            bool ClearUnreadStatus(const std::list<int> &conversationTypes, const std::list<int> lines);
             bool ClearAllUnreadStatus();
             
             bool FailSendingMessages();
@@ -86,7 +92,8 @@ namespace mars {
             bool RemoveGroupAndMember(const std::string &groupId);
             void UpdateGroupMember(const std::list<TGroupMember> &retList);
             
-            TUserInfo getUserInfo(const std::string &userId, bool refresh);
+            TUserInfo getUserInfo(const std::string &userId, const std::string &groupId, bool refresh);
+            std::list<TUserInfo> getUserInfos(const std::list<std::string> &userIds, const std::string &groupId);
             long InsertUserInfoOrReplace(const TUserInfo &userInfo);
             long UpdateMyInfo(const std::list<std::pair<int, std::string>> &infos);
             
@@ -95,13 +102,17 @@ namespace mars {
             std::list<std::string> getMyFriendList(bool refresh);
             std::list<std::string> getBlackList(bool refresh);
             
+            std::string GetFriendAlias(const std::string &friendId);
+            
             int64_t getFriendRequestHead();
             int64_t getFriendHead();
             
             long InsertFriendRequestOrReplace(const TFriendRequest &friendRequest);
             std::list<TFriendRequest> getFriendRequest(int direction);
             
-            long InsertFriendOrReplace(const std::string &friendUid, int state, int64_t timestamp);
+            long InsertFriendOrReplace(const std::string &friendUid, int state, int64_t timestamp, const std::string &alias);
+            
+            bool DeleteFriend(const std::string &friendUid);
             
             int unreadFriendRequest();
             void clearUnreadFriendRequestStatus();

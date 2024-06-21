@@ -42,6 +42,7 @@ namespace mars{
             int expireDuration;
             int mentionedType;
             std::list<std::string> mentionedTargets;
+            std::string extra;
         };
     }
 }

@@ -30,7 +30,7 @@ namespace mars {
             error = sqlite3_prepare_v2(m_db, m_sql.c_str(), -1, &m_stmt, NULL);
             if (error != SQLITE_OK)
             {
-                xerror2("prepare db error:%d info:%s sql:%s", error, getError(m_db), m_sql.c_str());
+                xerror2(TSF"prepare db error:%0 info:%1 sql:%2", error, getError(m_db), m_sql.c_str());
                 error = sqlite3_finalize(m_stmt);
                 m_stmt = NULL;
                 return ;
@@ -47,7 +47,7 @@ namespace mars {
             error = sqlite3_prepare_v2(m_db, m_sql.c_str(), -1, &m_stmt, NULL);
             if (error != SQLITE_OK)
             {
-                xerror2("prepare db error:%d info:%s sql:%s", error, getError(m_db), m_sql.c_str());
+                xerror2(TSF"prepare db error:%0 info:%1 sql:%2", error, getError(m_db), m_sql.c_str());
                 error = sqlite3_finalize(m_stmt);
                 m_stmt = NULL;
                 return ;
@@ -61,11 +61,26 @@ namespace mars {
                     return true;
                 }
                 if (error != SQLITE_OK && error != SQLITE_DONE) {
-                    xerror2("sql select error:%d, errorInfo:%s", error, getError(m_db));
+                    xerror2(TSF"sql select error:%0, errorInfo:%1", error, getError(m_db));
                 }
                 return false;
             }
-            
+        
+        bool RecyclableStatement::executeSelectEx(int &isDbCorrupt) {
+            int error = sqlite3_step(m_stmt);
+            isDbCorrupt = 0;
+            if (error == SQLITE_ROW) {
+                return true;
+            }
+            if (error != SQLITE_OK && error != SQLITE_DONE) {
+                xerror2(TSF"sql select error:%0, errorInfo:%1", error, getError(m_db));
+                if (error == SQLITE_CORRUPT || error == SQLITE_MISUSE) {
+                    isDbCorrupt = 1;
+                }
+            }
+            return false;
+        }
+        
             bool RecyclableStatement::executeInsert(long *rowId) {
                 int error = sqlite3_step(m_stmt);
                 long lid = (long)sqlite3_last_insert_rowid(m_db);
@@ -73,7 +88,7 @@ namespace mars {
                     *rowId = lid;
                 }
                 if (error != SQLITE_DONE) {
-                    xerror2("sql select error:%d, errorInfo:%s", error, getError(m_db));
+                    xerror2(TSF"sql select error:%0, errorInfo:%1", error, getError(m_db));
                 }
 
                 return error == SQLITE_DONE;
@@ -86,7 +101,7 @@ namespace mars {
                     *changes = lid;
                 }
                 if (error != SQLITE_DONE) {
-                    xerror2("sql select error:%d, errorInfo:%s", error, getError(m_db));
+                    xerror2(TSF"sql select error:%0, errorInfo:%1", error, getError(m_db));
                 }
 
                 return error == SQLITE_DONE;
@@ -100,7 +115,7 @@ namespace mars {
                 }
                 
                 if (error != SQLITE_DONE) {
-                    xerror2("sql select error:%d, errorInfo:%s", error, getError(m_db));
+                    xerror2(TSF"sql select error:%0, errorInfo:%1", error, getError(m_db));
                 }
 
                 return error == SQLITE_DONE;
@@ -213,7 +228,7 @@ namespace mars {
                 if (m_stmt) {
                     int rc = SQLITE_OK;
                     if((rc = sqlite3_finalize(m_stmt)) != SQLITE_OK) {
-                        xerror2("finalize_db err:%s, code:%d", getError(m_db), rc);
+                        xerror2(TSF"finalize_db err:%0, code:%1", getError(m_db), rc);
                     }
                     m_stmt = NULL;
                 }
@@ -246,7 +261,7 @@ namespace mars {
             return instance_;
         }
         
-        DB2::DB2() : opened(false), m_db(NULL) {
+        DB2::DB2() : opened(false), m_db(NULL), newCreatedDB(false) {
             
         }
         
@@ -257,46 +272,66 @@ namespace mars {
         bool DB2::isOpened() {
             return opened;
         }
-        
-        void DB2::Open(const std::string &sec) {
+        bool DB2::CheckDB(const std::string &sec) {
+            
+            return true;
+        }
+        void DB2::Open(const std::string &sec, bool rebuildDb) {
             secret = sec;
             
-            std::string path = app::GetAppFilePath();
-            if(!boost::filesystem::exists(path)) {
-                boost::filesystem::create_directories(path);
-            }
-            
-            
+            std::string path = app::GetAppFilePath() + "/" + app::GetDeviceInfo().clientid;
             std::string DB2Path = path + "/" + DB2_NAME;
             
             closeDB();
             sqlite3_shutdown();
+            
+            if (rebuildDb) {
+                boost::filesystem::remove(DB2Path);
+            }
+            
+            if(!boost::filesystem::exists(path)) {
+                boost::filesystem::create_directories(path);
+            }
+            
+            xerror2(TSF"open db %0",DB2Path.c_str());
+            
+            
             int rc = sqlite3_config(SQLITE_CONFIG_SERIALIZED);
             if (rc != SQLITE_OK)
             {
-                xerror2("config db error %d,ver:%s",rc,sqlite3_libversion());
+                xerror2(TSF"config db error %0,ver:%1",rc,sqlite3_libversion());
                 return;
             }
             rc = sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 0);
             if(rc != SQLITE_OK)
             {
-                xerror2("config db error %d,ver:%s",rc,sqlite3_libversion());
+                xerror2(TSF"config db error %0,ver:%1",rc,sqlite3_libversion());
                 return;
             }
             
             rc = sqlite3_open_v2(DB2Path.c_str(), &m_db, SQLITE_OPEN_READWRITE|SQLITE_OPEN_FULLMUTEX|SQLITE_OPEN_CREATE, NULL);
             if(rc != SQLITE_OK)
             {
-                xerror2("open error:%s error:%d",getError(m_db), rc);
+                xerror2(TSF"open error:%0 error:%1",getError(m_db), rc);
                 closeDB();
                 return;
             }
-            rc = sqlite3_key(m_db, sec.c_str(), int(sec.size()));
+            
+            if(m_db == NULL)
+            {
+                xerror2(TSF"open error db is NULL");
+                closeDB();
+                return;
+            }
+            
+            rc = sqlite3_key(m_db, secret.c_str(), int(secret.size()));
             if (rc != SQLITE_OK) {
-                xerror2("open error:%s error:%d",getError(m_db), rc);
+                xerror2(TSF"open error:%0 error:%1",getError(m_db), rc);
                 closeDB();
                 return;
             }
+            
+            xerror2(TSF"open db done");
             opened = true;
         }
         
@@ -305,7 +340,7 @@ namespace mars {
             {
                 if (sqlite3_close(m_db) != SQLITE_OK)
                 {
-                    xerror2("close error:%s",getError(m_db));
+                    xerror2(TSF"close error:%0",getError(m_db));
                 }
                 m_db = NULL;
             }
@@ -414,16 +449,17 @@ namespace mars {
                 }
             
             
+            if (!tableNameRight.empty()) {
 #ifdef __ANDROID__
-            for (std::list<std::string>::const_iterator it = columnsRight.begin(); it != columnsRight.end(); ++it)
+                for (std::list<std::string>::const_iterator it = columnsRight.begin(); it != columnsRight.end(); ++it) {
 #else
-                for (std::initializer_list<std::string>::const_iterator it = columnsRight.begin(); it != columnsRight.end(); ++it)
+                for (std::initializer_list<std::string>::const_iterator it = columnsRight.begin(); it != columnsRight.end(); ++it) {
 #endif
-                {
                     sql += "r.";
                     sql += *it;
                     sql += ",";
                 }
+            }
             
             sql = sql.substr(0, sql.length() - 1); //remove last ","
             
@@ -432,9 +468,13 @@ namespace mars {
             sql += tableNameLeft;
             sql += " l, ";
             sql += tableNameMiddle;
-            sql += " m, ";
-            sql += tableNameRight;
-            sql += " r ";
+            sql += " m";
+                
+            if (!tableNameRight.empty()) {
+                sql += ", ";
+                sql += tableNameRight;
+                sql += " r";
+            }
             
             if (where.size()) {
                 sql += " where ";
@@ -695,7 +735,7 @@ namespace mars {
             return statementHandle.getBlobValue(index, size);
         }
         
-        bool DB2::IsTableExist(std::string tableName)
+        int DB2::IsTableExist(std::string tableName)
         {
 #ifdef __ANDROID__
             std::list<std::string> columns;
@@ -711,13 +751,25 @@ namespace mars {
                 return false;
             }
             statement.bind(1, tableName);
-            return statement.executeSelect();
+            int corrupt = 0;
+            bool exist = statement.executeSelectEx(corrupt);
+            if (exist) {
+                return 1;
+            } else if(corrupt == 0){
+                return 0;
+            } else {
+                return -1;
+            }
         }
 
         
-        void DB2::Upgrade() {
-            if(!IsTableExist(VERSION_TABLE_NAME)) {
+        int DB2::Upgrade() {
+            int tableStatus = IsTableExist(VERSION_TABLE_NAME);
+            if(tableStatus == 0) {
+                newCreatedDB = true;
                 CreateDB2Version1();
+            } else if(tableStatus == -1) {
+                return -1;
             }
             
 #ifdef __ANDROID__
@@ -731,7 +783,7 @@ namespace mars {
             int error = 0;
             RecyclableStatement statementHandle(m_db, sql, error);
             if (error != 0) {
-                return;
+                return -1;
             }
             
             if (statementHandle.executeSelect()) {
@@ -755,7 +807,38 @@ namespace mars {
                     UpgradeDB4Version5();
                     version = 5;
                 }
+                
+                if(version == 5) {
+                    UpgradeDB5Version6();
+                    version = 6;
+                }
+                
+                if(version == 6) {
+                    UpgradeDB6Version7();
+                    version = 7;
+                }
+
+                if (version == 7) {
+                    UpgradeDB7Version8();
+                    version = 8;
+                }
+                
+                if(version == 8) {
+                    UpgradeDB8Version9();
+                    version = 9;
+                }
+                
+                if (version == 9) {
+                    UpgradeDB9Version10();
+                    version = 10;
+                }
+
+                if (version == 10){
+                    UpgradeDB10Version11();
+
+                }
             }
+            return 0;
         }
         
         bool DB2::executeSql(const std::string &sql) {
@@ -825,6 +908,102 @@ namespace mars {
             return SetDBVersion(5);
         }
         
+        bool DB2::UpgradeDB5Version6() {
+            static const std::string createChannelTableSql = "ALTER TABLE t_friend ADD COLUMN _alias TEXT";
+            if (!executeSql(createChannelTableSql)) {
+                return false;
+            }
+            
+            return SetDBVersion(6);
+        }
+            
+        bool DB2::UpgradeDB6Version7() {
+            static const std::string createMessageIndex1 = "CREATE INDEX IF NOT EXISTS message_index1 ON t_message(_conv_type, _conv_line=, _conv_target=, _status)";
+            if (!executeSql(createMessageIndex1)) {
+                return false;
+            }
+            
+            static const std::string createMessageIndex2 = "CREATE INDEX IF NOT EXISTS message_index2 ON t_message(_status)";
+            if (!executeSql(createMessageIndex2)) {
+                return false;
+            }
+            
+            static const std::string createMessageIndex3 = "CREATE INDEX IF NOT EXISTS message_index3 ON t_message(_uid)";
+            if (!executeSql(createMessageIndex3)) {
+                return false;
+            }
+            
+            static const std::string createMessageIndex4 = "CREATE INDEX IF NOT EXISTS message_index4 ON t_message(_timestamp)";
+            if (!executeSql(createMessageIndex4)) {
+                return false;
+            }
+            
+            return SetDBVersion(7);
+        }
+        
+        bool DB2::UpgradeDB7Version8() {
+            std::string addColumn = "ALTER TABLE t_group ADD COLUMN _mute integer default 0";
+            if (!executeSql(addColumn)) {
+                return false;
+            }
+            
+            addColumn = "ALTER TABLE t_group ADD COLUMN _join_type integer default 0";
+            if (!executeSql(addColumn)) {
+                return false;
+            }
+            
+            addColumn = "ALTER TABLE t_group ADD COLUMN _private_chat integer default 0";
+            if (!executeSql(addColumn)) {
+                return false;
+            }
+            
+            addColumn = "ALTER TABLE t_group ADD COLUMN _searchable integer default 0";
+            if (!executeSql(addColumn)) {
+                return false;
+            }
+            return SetDBVersion(8);
+        }
+
+            bool DB2::UpgradeDB8Version9() {
+                static const std::string createMessageIndex1 = "CREATE INDEX IF NOT EXISTS message_index1 ON t_message(_conv_type, _conv_line, _conv_target, _status)";
+                if (!executeSql(createMessageIndex1)) {
+                    return false;
+                }
+                
+                static const std::string createMessageIndex2 = "CREATE INDEX IF NOT EXISTS message_index2 ON t_message(_status)";
+                if (!executeSql(createMessageIndex2)) {
+                    return false;
+                }
+                
+                static const std::string createMessageIndex3 = "CREATE INDEX IF NOT EXISTS message_index3 ON t_message(_uid)";
+                if (!executeSql(createMessageIndex3)) {
+                    return false;
+                }
+                
+                static const std::string createMessageIndex4 = "CREATE INDEX IF NOT EXISTS message_index4 ON t_message(_timestamp)";
+                if (!executeSql(createMessageIndex4)) {
+                    return false;
+                }
+                
+                return SetDBVersion(9);
+            }
+            
+            bool DB2::UpgradeDB9Version10() {
+                std::string addColumn = "ALTER TABLE t_message ADD COLUMN _extra TEXT";
+                if (!executeSql(addColumn)) {
+                    return false;
+                }
+                return SetDBVersion(10);
+            }
+            
+            bool DB2::UpgradeDB10Version11() {
+                std::string addColumn = "ALTER TABLE t_user_server ADD COLUMN _thumb_para TEXT DEFAULT NULL";
+                if (!executeSql(addColumn)) {
+                    return false;
+                }
+                return SetDBVersion(11);
+            }
+            
         bool DB2::CreateDB2Version1() {
             
             //create message table
@@ -993,10 +1172,11 @@ namespace mars {
             columns2.push_back("_host");
             columns2.push_back("_long_port");
             columns2.push_back("_short_port");
+            columns2.push_back("_thumb_para");
             columns2.push_back("_update_dt");
             std::string sql = GetInsertSql("t_user_server", columns2, true);
 #else
-            std::string sql = GetInsertSql("t_user_server", {"_uid", "_host", "_long_port", "_short_port", "_update_dt"}, true);
+            std::string sql = GetInsertSql("t_user_server", {"_uid", "_host", "_long_port", "_short_port", "_thumb_para", "_update_dt"}, true);
 #endif
             int error = 0;
             RecyclableStatement statementHandle(m_db, sql, error);
@@ -1008,7 +1188,8 @@ namespace mars {
             Bind(statementHandle, userServer.host, 2);
             Bind(statementHandle, userServer.longLinkPort, 3);
             Bind(statementHandle, userServer.shortLinkPort, 4);
-            Bind(statementHandle, (int64_t)time(NULL), 5);
+            Bind(statementHandle, userServer.thumbPara, 5);
+            Bind(statementHandle, (int64_t)time(NULL), 6);
             
             if(!ExecuteInsert(statementHandle)) {
                 return false;
@@ -1028,9 +1209,10 @@ namespace mars {
             columns.push_back("_long_port");
             columns.push_back("_short_port");
             columns.push_back("_update_dt");
+            columns.push_back("_thumb_para");
             std::string sql = GetSelectSql("t_user_server", columns, "_uid=?");
 #else
-            std::string sql = GetSelectSql("t_user_server", {"_host", "_long_port", "_short_port", "_update_dt"}, "_uid=?");
+            std::string sql = GetSelectSql("t_user_server", {"_host", "_long_port", "_short_port", "_update_dt", "_thumb_para"}, "_uid=?");
 #endif
             int error = 0;
             RecyclableStatement statementHandle(m_db, sql, error);
@@ -1046,6 +1228,7 @@ namespace mars {
                 result.longLinkPort = getIntValue(statementHandle, 1);
                 result.shortLinkPort = getIntValue(statementHandle, 2);
                 result.updateDt = getBigIntValue(statementHandle, 3);
+                result.thumbPara = getStringValue(statementHandle, 4);
             }
             
             return result;

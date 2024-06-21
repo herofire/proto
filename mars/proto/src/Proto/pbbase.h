@@ -34,6 +34,7 @@ namespace mars{
         
         extern const char* keyGroup;
         
+        extern const char* keyUserId;
         
         extern const char* keyFromUid;
         extern const char* keyToUid;
@@ -50,6 +51,11 @@ namespace mars{
         extern const char* keyServer;
         extern const char* keyPort;
         
+        extern const char* keyMType;
+        extern const char* keyMPath;
+        extern const char* keyDate;
+        extern const char* keyPath;
+        
         extern const char* keyTargetId;
         extern const char* keyName;
         extern const char* keyPortrait;
@@ -57,6 +63,10 @@ namespace mars{
         extern const char* keyMemberCount;
         extern const char* keyExtra;
         extern const char* keyMemberUpdateDt;
+        extern const char* keyMute;
+        extern const char* keyJoinType;
+        extern const char* keyPrivateChat;
+        extern const char* keySearchable;
         extern const char* keyMemberId;
         extern const char* keyAlias;
         extern const char* keyGroupInfo;
@@ -146,6 +156,7 @@ namespace mars{
         extern const char* keyHost;
         extern const char* keyLongPort;
         extern const char* keyShortPort;
+        extern const char* keyThumbPara;
         extern const char* keySecret;
         extern const char* keySocial;
         extern const char* keyChannelId;

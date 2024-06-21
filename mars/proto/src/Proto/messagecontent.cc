@@ -34,6 +34,7 @@ namespace mars{
             for (int i = 0; i < size; i++) {
                 mentionedTargets.insert(mentionedTargets.end(), getString(msg, keyMentionedTargets, i));
             }
+            extra = getString(msg, keyExtra, 0);
             
             if(destroy)
             finishRead(msg);
@@ -54,6 +55,7 @@ namespace mars{
             for (std::list<std::string>::iterator it = mentionedTargets.begin(); it != mentionedTargets.end(); it++) {
                 setString(msg, keyMentionedTargets, *it);
             }
+            setString(msg, keyExtra, extra);
         }
     }
 }

@@ -23,6 +23,7 @@ namespace mars{
         const char* keyAddedMember = "added_member";
         const char* keyToLine = "to_line";
         const char* keyNotifyContent = "notify_content";
+        const char* keyUserId = "user_id";
         
         const char* keyType = "type";
         const char* keyTarget = "target";
@@ -45,6 +46,12 @@ namespace mars{
         const char* keyServer = "server";
         const char* keyPort = "port";
         
+        const char* keyMType = "media_type";
+        const char* keyMPath = "media_path";
+        const char* keyDate = "date";
+        const char* keyPath = "path";
+        
+        
         
         const char* keyTargetId = "target_id";
         const char* keyName = "name";
@@ -53,6 +60,12 @@ namespace mars{
         const char* keyMemberCount = "member_count";
         const char* keyExtra = "extra";
         const char* keyMemberUpdateDt = "member_update_dt";
+        const char* keyMute = "mute";
+        const char* keyJoinType = "join_type";
+        const char* keyPrivateChat = "private_chat";
+        const char* keySearchable = "searchable";
+        
+        
         const char* keyMemberId = "member_id";
         const char* keyAlias = "alias";
         const char* keyGroupInfo = "group_info";
@@ -144,6 +157,7 @@ namespace mars{
         const char* keyHost = "host";
         const char* keyLongPort = "long_port";
         const char* keyShortPort = "short_port";
+        const char* keyThumbPara = "thumb_para";
         const char* keySecret = "secret";
         const char* keySocial = "social";
         const char* keyCallback = "callback";

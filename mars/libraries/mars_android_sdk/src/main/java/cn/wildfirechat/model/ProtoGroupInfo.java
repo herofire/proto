@@ -14,6 +14,11 @@ public class ProtoGroupInfo {
     private String extra;
     private long updateDt;
 
+    private int mute;
+    private int joinType;
+    private int privateChat;
+    private int searchable;
+
     public String getTarget() {
         return target;
     }
@@ -76,5 +81,37 @@ public class ProtoGroupInfo {
 
     public void setUpdateDt(long updateDt) {
         this.updateDt = updateDt;
+    }
+
+    public int getMute() {
+        return mute;
+    }
+
+    public void setMute(int mute) {
+        this.mute = mute;
+    }
+
+    public int getJoinType() {
+        return joinType;
+    }
+
+    public void setJoinType(int joinType) {
+        this.joinType = joinType;
+    }
+
+    public int getPrivateChat() {
+        return privateChat;
+    }
+
+    public void setPrivateChat(int privateChat) {
+        this.privateChat = privateChat;
+    }
+
+    public int getSearchable() {
+        return searchable;
+    }
+
+    public void setSearchable(int searchable) {
+        this.searchable = searchable;
     }
 }

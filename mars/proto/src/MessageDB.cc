@@ -11,6 +11,7 @@
 #include "mars/proto/stn_callback.h"
 #include "mars/proto/src/Proto/conversation.h"
 #include "mars/comm/thread/atomic_oper.h"
+#include "mars/comm/xlogger/xlogger.h"
 #include "mars/app/app.h"
 #include <map>
 #include <time.h>
@@ -93,10 +94,10 @@ namespace mars {
             columns.push_back("_status");
             columns.push_back("_uid");
             columns.push_back("_timestamp");
-
+            columns.push_back("_extra");
             std::string sql = db->GetInsertSql(MESSAGE_TABLE_NAME, columns);
 #else
-            std::string sql = db->GetInsertSql(MESSAGE_TABLE_NAME, {"_conv_type","_conv_target","_conv_line","_from","_to","_cont_type","_cont_searchable","_cont_push","_cont","_cont_data","_cont_local","_cont_media_type","_cont_remote_media_url","_cont_local_media_path","_direction","_status","_uid","_timestamp"});
+            std::string sql = db->GetInsertSql(MESSAGE_TABLE_NAME, {"_conv_type","_conv_target","_conv_line","_from","_to","_cont_type","_cont_searchable","_cont_push","_cont","_cont_data","_cont_local","_cont_media_type","_cont_remote_media_url","_cont_local_media_path","_direction","_status","_uid","_timestamp","_extra"});
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -133,7 +134,7 @@ namespace mars {
             
             db->Bind(statementHandle, msg.messageUid, index++);
             db->Bind(statementHandle, msg.timestamp, index++);
-            
+            db->Bind(statementHandle, msg.content.extra, index++);
             db->ExecuteInsert(statementHandle, &(msg.messageId));
             return msg.messageId;
         }
@@ -226,9 +227,10 @@ namespace mars {
             columns.push_back("_cont_media_type");
             columns.push_back("_cont_remote_media_url");
             columns.push_back("_cont_local_media_path");
+            columns.push_back("_extra");
             std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, "_uid=?");
 #else
-            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_cont_type","_cont_searchable","_cont_push","_cont","_cont_data","_cont_local","_cont_media_type","_cont_remote_media_url","_cont_local_media_path"}, "_uid=?");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_cont_type","_cont_searchable","_cont_push","_cont","_cont_data","_cont_local","_cont_media_type","_cont_remote_media_url","_cont_local_media_path","_extra"}, "_uid=?");
 #endif
             
             int error = 0;
@@ -246,7 +248,8 @@ namespace mars {
             db->Bind(statementHandle, content.mediaType, 7);
             db->Bind(statementHandle, content.remoteMediaUrl, 8);
             db->Bind(statementHandle, content.localMediaPath, 9);
-            db->Bind(statementHandle, messageUid, 10);
+            db->Bind(statementHandle, content.extra, 10);
+            db->Bind(statementHandle, messageUid, 11);
             
             int count = db->ExecuteUpdate(statementHandle);
             
@@ -514,9 +517,9 @@ namespace mars {
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_timestamp");
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=?  and _conv_line=? and _conv_target=?");
 #else
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_timestamp"}, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_timestamp"}, "_conv_type=? and _conv_line=? and _conv_target=?");
 #endif
             int error = 0;
             RecyclableStatement updateStatementHandle(db, sql, error);
@@ -526,8 +529,8 @@ namespace mars {
             
             db->Bind(updateStatementHandle, timestamp, 1);
             db->Bind(updateStatementHandle, conversationType, 2);
-            db->Bind(updateStatementHandle, target, 3);
-            db->Bind(updateStatementHandle, line, 4);
+            db->Bind(updateStatementHandle, line, 3);
+            db->Bind(updateStatementHandle, target, 4);
             int count = db->ExecuteUpdate(updateStatementHandle);
             
             if (count > 0) {
@@ -566,9 +569,9 @@ namespace mars {
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_istop");
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=?");
 #else
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_istop"}, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_istop"}, "_conv_type=?  and _conv_line=? and _conv_target=?");
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -578,8 +581,8 @@ namespace mars {
             
             db->Bind(statementHandle, istop, 1);
             db->Bind(statementHandle, conversationType, 2);
-            db->Bind(statementHandle, target, 3);
-            db->Bind(statementHandle, line, 4);
+            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, target, 4);
             int count = db->ExecuteUpdate(statementHandle);
             
             if (count > 0) {
@@ -616,9 +619,9 @@ namespace mars {
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_issilent");
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=?");
 #else
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_issilent"}, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_issilent"}, "_conv_type=? and _conv_line=? and _conv_target=?");
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -628,8 +631,8 @@ namespace mars {
             
             db->Bind(statementHandle, issilent, 1);
             db->Bind(statementHandle, conversationType, 2);
-            db->Bind(statementHandle, target, 3);
-            db->Bind(statementHandle, line, 4);
+            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, target, 4);
             int count = db->ExecuteUpdate(statementHandle);
             
             if (count > 0) {
@@ -668,9 +671,9 @@ namespace mars {
             std::list<std::string> columns;
             columns.push_back("_draft");
             columns.push_back("_timestamp");
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=?  and _conv_line=? and _conv_target=?");
 #else
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_draft", "_timestamp"}, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_draft", "_timestamp"}, "_conv_type=?  and _conv_line=? and _conv_target=?");
 #endif
             int error = 0;
             RecyclableStatement updateStatementHandle(db, sql, error);
@@ -681,8 +684,8 @@ namespace mars {
             db->Bind(updateStatementHandle, draft, 1);
             db->Bind(updateStatementHandle, ((int64_t)time(NULL))*1000, 2);
             db->Bind(updateStatementHandle, conversationType, 3);
-            db->Bind(updateStatementHandle, target, 4);
-            db->Bind(updateStatementHandle, line, 5);
+            db->Bind(updateStatementHandle, line, 4);
+            db->Bind(updateStatementHandle, target, 5);
             int count = db->ExecuteUpdate(updateStatementHandle);
             
             if (count > 0) {
@@ -728,55 +731,142 @@ namespace mars {
             return false;
         }
         
+//        std::list<TConversation> MessageDB::GetConversationList(const std::list<int> &conversationTypes, const std::list<int> &lines) {
+//            DB2 *db = DB2::Instance();
+//            if (!db->isOpened()) {
+//              return std::list<TConversation>();
+//            }
+//            std::string where;
+//            if (conversationTypes.size() > 0) {
+//                where += "_conv_type in (";
+//                for (std::list<int>::const_iterator it = conversationTypes.begin(); it != conversationTypes.end(); it++) {
+//                    char str[255];
+//                    memset(str, 0, 255);
+//                    sprintf(str, "%d", *it);
+//                    where += str;
+//                    where += ",";
+//                }
+//                where = where.substr(0, where.size()-1);
+//                where += ") and ";
+//            }
+//            
+//        
+//            if (lines.size() > 0) {
+//                where += "_conv_line in (";
+//                for (std::list<int>::const_iterator it = lines.begin(); it != lines.end(); it++) {
+//                    char str[255];
+//                    memset(str, 0, 255);
+//                    sprintf(str, "%d", *it);
+//                    where += str;
+//                    where += ",";
+//                }
+//                where = where.substr(0, where.size()-1);
+//                where += ") and ";
+//            }
+//            
+//            where += " _timestamp > 0 ";
+//            std::string orderBy = "_istop desc, _timestamp desc";
+//
+//#ifdef __ANDROID__
+//            std::list<std::string> columns;
+//            columns.push_back("_conv_type");
+//            columns.push_back("_conv_target");
+//            columns.push_back("_conv_line");
+//            columns.push_back("_draft");
+//            columns.push_back("_istop");
+//            columns.push_back("_issilent");
+//            columns.push_back("_timestamp");
+//            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, columns, where, orderBy, 500);
+//#else
+//            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, {"_conv_type", "_conv_target", "_conv_line", "_draft",  "_istop", "_issilent", "_timestamp"}, where, orderBy, 500);
+//#endif
+//            int error = 0;
+//            RecyclableStatement statementHandle(db, sql, error);
+//            if (error != 0) {
+//                return std::list<TConversation>();
+//            }
+//            
+//            std::list<TConversation> convs;
+//          while(statementHandle.executeSelect()) {
+//                TConversation conv;
+//                conv.conversationType = db->getIntValue(statementHandle, 0);
+//                conv.target = db->getStringValue(statementHandle, 1);
+//                conv.line = db->getIntValue(statementHandle, 2);
+//                conv.draft = db->getStringValue(statementHandle, 3);
+//                conv.isTop = db->getIntValue(statementHandle, 4);
+//                conv.isSilent = db->getIntValue(statementHandle, 5);
+//                conv.timestamp = db->getBigIntValue(statementHandle, 6);
+//                
+//              std::list<TMessage> lastMessages = GetMessages(conv.conversationType, conv.target, conv.line, std::list<int>(), true, 1, INT_MAX, "");
+//                if (lastMessages.size() > 0) {
+//                    conv.lastMessage = *lastMessages.begin();
+//                }
+//              
+//              conv.unreadCount = GetUnreadCount(conv.conversationType, conv.target, conv.line);
+//              
+//              conv.isSilent = GetConversationSilent(conv.conversationType, conv.target, conv.line);
+//              
+//                convs.push_back(conv);
+//            }
+//            return convs;
+//        }
+        
         std::list<TConversation> MessageDB::GetConversationList(const std::list<int> &conversationTypes, const std::list<int> &lines) {
             DB2 *db = DB2::Instance();
             if (!db->isOpened()) {
-              return std::list<TConversation>();
+                return std::list<TConversation>();
             }
             std::string where;
+            std::string where2;
             if (conversationTypes.size() > 0) {
                 where += "_conv_type in (";
+                where2 += "c._conv_type in (";
                 for (std::list<int>::const_iterator it = conversationTypes.begin(); it != conversationTypes.end(); it++) {
                     char str[255];
                     memset(str, 0, 255);
                     sprintf(str, "%d", *it);
                     where += str;
                     where += ",";
+                    
+                    where2 += str;
+                    where2 += ",";
                 }
                 where = where.substr(0, where.size()-1);
                 where += ") and ";
+                
+                where2 = where2.substr(0, where2.size()-1);
+                where2 += ") and ";
             }
             
-        
+            
             if (lines.size() > 0) {
                 where += "_conv_line in (";
+                where2 += "c._conv_line in (";
                 for (std::list<int>::const_iterator it = lines.begin(); it != lines.end(); it++) {
                     char str[255];
                     memset(str, 0, 255);
                     sprintf(str, "%d", *it);
                     where += str;
                     where += ",";
+                    
+                    where2 += str;
+                    where2 += ",";
                 }
                 where = where.substr(0, where.size()-1);
-                where += ") and ";
+                where += ") ";
+                
+                where2 = where2.substr(0, where2.size()-1);
+                where2 += ")  ";
             }
             
-            where += " _timestamp > 0 ";
-            std::string orderBy = "_istop desc, _timestamp desc";
-
-#ifdef __ANDROID__
-            std::list<std::string> columns;
-            columns.push_back("_conv_type");
-            columns.push_back("_conv_target");
-            columns.push_back("_conv_line");
-            columns.push_back("_draft");
-            columns.push_back("_istop");
-            columns.push_back("_issilent");
-            columns.push_back("_timestamp");
-            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, columns, where, orderBy, 500);
-#else
-            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, {"_conv_type", "_conv_target", "_conv_line", "_draft",  "_istop", "_issilent", "_timestamp"}, where, orderBy, 500);
-#endif
+            std::string sql = "select c._conv_type, c._conv_target, c._conv_line, c._draft, c._istop, c._issilent, c._timestamp,m._id as mid, m._from as mfrom, m._cont_type as mconttype, m._cont_searchable as mcontsearchable, m._cont_push as mcontpush, m._cont as mcont, m._cont_data as mcontdata, m._cont_local as mcontlocal, m._cont_media_type as mcontmediatype, m._cont_remote_media_url as mcontrmurl, m._cont_local_media_path as mcontlmpath, m._direction as mdirection, m._status as mstatus, m._uid as muid, m._timestamp as mts, m._to as mto, m._extra as mextra, m.c1 as mc1, m.c2 as mc2, m.c3 as mc3 from t_conversation c left join (select s.*, t.c1, t.c2, t.c3 from (SELECT max(_timestamp) as ts, sum(_status=3) as c1, sum(_status=4) as c2, sum(_status=5) as c3 FROM `t_message` where " + where;
+            
+            sql += " group by _conv_type, _conv_line, _conv_target) t left join `t_message` as s on t.ts=s._timestamp group by _conv_type, _conv_line, _conv_target) as m on c._conv_type=m._conv_type and c._conv_line=m._conv_line and c._conv_target=m._conv_target where ";
+            
+            sql += where2;
+            
+            sql += " order by c._istop desc, c._timestamp desc";
+            
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
             if (error != 0) {
@@ -784,25 +874,75 @@ namespace mars {
             }
             
             std::list<TConversation> convs;
-          while(statementHandle.executeSelect()) {
+            while(statementHandle.executeSelect()) {
                 TConversation conv;
-                conv.conversationType = db->getIntValue(statementHandle, 0);
-                conv.target = db->getStringValue(statementHandle, 1);
-                conv.line = db->getIntValue(statementHandle, 2);
-                conv.draft = db->getStringValue(statementHandle, 3);
-                conv.isTop = db->getIntValue(statementHandle, 4);
-                conv.isSilent = db->getIntValue(statementHandle, 5);
-                conv.timestamp = db->getBigIntValue(statementHandle, 6);
+                int index = 0;
+                conv.conversationType = db->getIntValue(statementHandle, index++);
+                conv.target = db->getStringValue(statementHandle, index++);
+                conv.line = db->getIntValue(statementHandle, index++);
+                conv.draft = db->getStringValue(statementHandle, index++);
+                conv.isTop = db->getIntValue(statementHandle, index++);
+                conv.isSilent = db->getIntValue(statementHandle, index++);
+                conv.timestamp = db->getBigIntValue(statementHandle, index++);
                 
-              std::list<TMessage> lastMessages = GetMessages(conv.conversationType, conv.target, conv.line, std::list<int>(), true, 1, INT_MAX, "");
-                if (lastMessages.size() > 0) {
-                    conv.lastMessage = *lastMessages.begin();
+                TMessage msg;
+                
+                msg.messageId = db->getIntValue(statementHandle, index++);
+                msg.conversationType = conv.conversationType;
+                msg.target = conv.target;
+                msg.line = conv.line;
+                msg.from = db->getStringValue(statementHandle, index++);
+                
+                msg.content.type = db->getIntValue(statementHandle, index++);
+                msg.content.searchableContent = db->getStringValue(statementHandle, index++);
+                msg.content.pushContent = db->getStringValue(statementHandle, index++);
+                msg.content.content = db->getStringValue(statementHandle, index++);
+                int size = 0;
+                const void *p = db->getBlobValue(statementHandle, index++, size);
+                msg.content.binaryContent = std::string((const char *)p, size);
+                msg.content.localContent = db->getStringValue(statementHandle, index++);
+                msg.content.mediaType = db->getIntValue(statementHandle, index++);
+                msg.content.remoteMediaUrl = db->getStringValue(statementHandle, index++);
+                msg.content.localMediaPath = db->getStringValue(statementHandle, index++);
+                
+                msg.direction = db->getIntValue(statementHandle, index++);
+                msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
+                msg.messageUid = db->getBigIntValue(statementHandle, index++);
+                msg.timestamp = db->getBigIntValue(statementHandle, index++);
+                
+                
+                std::string toStr = db->getStringValue(statementHandle, index++);
+                
+                if (!toStr.empty()) {
+                    std::istringstream f(toStr);
+                    std::string s;
+                    while (getline(f, s, ';')) {
+                        msg.to.push_back(s);
+                    }
                 }
-              
-              conv.unreadCount = GetUnreadCount(conv.conversationType, conv.target, conv.line);
-              
-              conv.isSilent = GetConversationSilent(conv.conversationType, conv.target, conv.line);
-              
+                
+                msg.content.extra = db->getStringValue(statementHandle, index++);
+                
+                if (msg.messageId > 0) {
+                    conv.lastMessage = msg;
+                    if (conv.conversationType == 1) {
+                        if (conv.lastMessage.content.type == 108) {
+                            continue;
+                        }
+                        if (conv.lastMessage.content.type == 107 && conv.lastMessage.from == mars::app::GetAccountUserName()) {
+                            continue;
+                        }
+                    }
+                }
+                
+                conv.unreadCount.unreadMention = db->getIntValue(statementHandle, index++);
+                conv.unreadCount.unreadMentionAll = db->getIntValue(statementHandle, index++);
+                conv.unreadCount.unread = db->getIntValue(statementHandle, index++);
+                conv.unreadCount.unread += conv.unreadCount.unreadMention;
+                conv.unreadCount.unread += conv.unreadCount.unreadMentionAll;
+                
+                conv.isSilent = GetConversationSilent(conv.conversationType, conv.target, conv.line);
+                
                 convs.push_back(conv);
             }
             return convs;
@@ -814,54 +954,30 @@ namespace mars {
                 return false;
             }
           
-#ifdef __ANDROID__
-            std::list<std::string> columns;
-            columns.push_back("_draft");
-            columns.push_back("_istop");
-            columns.push_back("_issilent");
-            columns.push_back("_timestamp");
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
-#else
-            std::string sql = db->GetUpdateSql(CONVERSATION_TABLE_NAME, {"_draft", "_istop", "_issilent", "_timestamp"}, "_conv_type=? and _conv_target=? and _conv_line=?");
-#endif
+            std::string sql = db->GetDeleteSql(CONVERSATION_TABLE_NAME, "_conv_type=? and _conv_target=? and _conv_line=?");
             int error = 0;
-            RecyclableStatement updateStatementHandle(db, sql, error);
+            RecyclableStatement statementHandle(db, sql, error);
             if (error != 0) {
                 return false;
             }
-            
-            db->Bind(updateStatementHandle, "", 1);
-            db->Bind(updateStatementHandle, 0, 2);
-            db->Bind(updateStatementHandle, 0, 3);
-            db->Bind(updateStatementHandle, 0, 4);
-            db->Bind(updateStatementHandle, conversationType, 5);
-            db->Bind(updateStatementHandle, target, 6);
-            db->Bind(updateStatementHandle, line, 7);
-            int count = db->ExecuteUpdate(updateStatementHandle);
-            
-            if (count > 0) {
+
+            db->Bind(statementHandle, conversationType, 1);
+            db->Bind(statementHandle, target, 2);
+            db->Bind(statementHandle, line, 3);
+
+            if (db->ExecuteDelete(statementHandle) > 0) {
+                if (clearMessage) {
+                    std::string sql2 = db->GetDeleteSql(MESSAGE_TABLE_NAME, "_conv_type=? and _conv_target=? and _conv_line=?");
+                    RecyclableStatement statementHandle2(db, sql, error);
+                    db->Bind(statementHandle2, conversationType, 1);
+                    db->Bind(statementHandle2, target, 2);
+                    db->Bind(statementHandle2, line, 3);
+                    db->ExecuteDelete(statementHandle2);
+                }
+
                 return true;
             }
-            
-//
-//
-//            std::string sql = db->GetDeleteSql(CONVERSATION_TABLE_NAME, "_conv_type=? and _conv_target=? and _conv_line=?");
-//            db->Bind(statementHandle, conversationType, 1);
-//            db->Bind(statementHandle, target, 2);
-//            db->Bind(statementHandle, line, 3);
-//
-//            if (db->ExecuteDelete(statementHandle) > 0) {
-//                if (clearMessage) {
-//                    RecyclableStatement statementHandle2 = db->GetDeleteStatement(MESSAGE_TABLE_NAME, "_conv_type=? and _conv_target=? and _conv_line=?");
-//                    db->Bind(statementHandle2, conversationType, 1);
-//                    db->Bind(statementHandle2, target, 2);
-//                    db->Bind(statementHandle2, line, 3);
-//                    db->ExecuteDelete(statementHandle2);
-//                }
-//
-//                return true;
-//            }
-//
+
             return false;
         }
         
@@ -871,13 +987,13 @@ namespace mars {
                 return false;
             }
             
-            std::string sql = db->GetDeleteSql(MESSAGE_TABLE_NAME, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetDeleteSql(MESSAGE_TABLE_NAME, "_conv_type=? and _conv_line=? and _conv_target=?");
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
             
             db->Bind(statementHandle, conversationType, 1);
-            db->Bind(statementHandle, target, 2);
-            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, line, 2);
+            db->Bind(statementHandle, target, 3);
             db->ExecuteDelete(statementHandle);
 
             return true;
@@ -895,9 +1011,9 @@ namespace mars {
             columns.push_back("_istop");
             columns.push_back("_issilent");
             columns.push_back("_timestamp");
-            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=?");
+            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=?");
 #else
-            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, {"_draft",  "_istop", "_issilent", "_timestamp"}, "_conv_type=? and _conv_target=? and _conv_line=?"/* and _timestamp > 0"*/);
+            std::string sql = db->GetSelectSql(CONVERSATION_TABLE_NAME, {"_draft",  "_istop", "_issilent", "_timestamp"}, "_conv_type=? and _conv_line=? and _conv_target=?"/* and _timestamp > 0"*/);
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -906,8 +1022,8 @@ namespace mars {
             }
             
             db->Bind(statementHandle, conversationType, 1);
-            db->Bind(statementHandle, target, 2);
-            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, line, 2);
+            db->Bind(statementHandle, target, 3);
             
             conv.target = target;
             conv.conversationType = conversationType;
@@ -937,9 +1053,9 @@ namespace mars {
             columns.push_back("count(*)");
             columns.push_back("sum(_status=?)");
             columns.push_back("sum(_status=?)");
-            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=? and _status=?");
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=? and _status in (?, ?, ?)");
 #else
-            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME, {"count(*), sum(_status=?), sum(_status=?)"}, "_conv_type=? and _conv_target=? and _conv_line=? and _status in (?, ?, ?)");
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME, {"count(*), sum(_status=?), sum(_status=?)"}, "_conv_type=? and _conv_line=? and _conv_target=? and _status in (?, ?, ?)");
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -951,8 +1067,8 @@ namespace mars {
             db->Bind(statementHandle, Message_Status_Mentioned, index++);
             db->Bind(statementHandle, Message_Status_AllMentioned, index++);
             db->Bind(statementHandle, conversationType, index++);
-            db->Bind(statementHandle, target, index++);
             db->Bind(statementHandle, line, index++);
+            db->Bind(statementHandle, target, index++);
             db->Bind(statementHandle, Message_Status_Unread, index++);
             db->Bind(statementHandle, Message_Status_Mentioned, index++);
             db->Bind(statementHandle, Message_Status_AllMentioned, index++);
@@ -1046,19 +1162,32 @@ namespace mars {
           if (!db->isOpened()) {
             return std::list<TMessage>();
           }
-            std::string where = "_conv_type=? and _conv_target=? and _conv_line=?";
+            std::string where = "_conv_type=? and _conv_line=? and _conv_target=?";
             
             if (!withUser.empty()) {
                 where += " and ((_direction=0 and (_to='' or _to=?)) or (_from=?))";
             }
+            int64_t ts = 0;
             
-            if (old) {
-              if (startPoint == 0) {
-                startPoint = INT_MAX;
-              }
-                where += " and _id < ?";
-            } else {
-                where += " and _id > ?";
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                if (old) {
+                    where += " and _timestamp < ?";
+                } else {
+                    where += " and _timestamp > ?";
+                }
+            }
+            
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                TMessage startMsg = GetMessageById(startPoint);
+                if (startMsg.messageId > 0) {
+                    ts = startMsg.timestamp;
+                } else {
+                    if (old) {
+                        ts = 9223372036854775807LL;
+                    } else {
+                        ts = 0;
+                    }
+                }
             }
             
             if (contentTypes.size() > 0) {
@@ -1105,6 +1234,7 @@ namespace mars {
             columns.push_back("_status");
             columns.push_back("_uid");
             columns.push_back("_timestamp");
+            columns.push_back("_extra");
             std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
                                                                          columns, where, orderBy, count);
 #else
@@ -1128,7 +1258,9 @@ namespace mars {
                     "_direction",
                     "_status",
                     "_uid",
-                    "_timestamp"}, where, orderBy, count);
+                    "_timestamp",
+                    "_extra"
+                }, where, orderBy, count);
 #endif
             
             int error = 0;
@@ -1139,13 +1271,16 @@ namespace mars {
             
             int index = 1;
             db->Bind(statementHandle, conversationType, index++);
-            db->Bind(statementHandle, target, index++);
             db->Bind(statementHandle, line, index++);
+            db->Bind(statementHandle, target, index++);
             if (!withUser.empty()) {
                 db->Bind(statementHandle, withUser, index++);
                 db->Bind(statementHandle, withUser, index++);
             }
-            db->Bind(statementHandle, (int)startPoint, index++);
+            
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                db->Bind(statementHandle, ts, index++);
+            }
             
             std::list<TMessage> result;
             
@@ -1184,7 +1319,7 @@ namespace mars {
                 msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
                 msg.messageUid = db->getBigIntValue(statementHandle, index++);
                 msg.timestamp = db->getBigIntValue(statementHandle, index++);
-                
+                msg.content.extra = db->getStringValue(statementHandle, index++);
                 result.push_back(msg);
             }
             if (old) {
@@ -1194,6 +1329,387 @@ namespace mars {
             return result;
         }
       
+        std::list<TMessage> MessageDB::GetMessages(const std::list<int> &conversationTypes, const std::list<int> &lines, const std::list<int> &contentTypes, bool desc, int count, long startPoint, const std::string &withUser) {
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return std::list<TMessage>();
+            }
+            std::string where;
+            if (conversationTypes.size() > 0) {
+                where += "_conv_type in (";
+                for (std::list<int>::const_iterator it = conversationTypes.begin(); it != conversationTypes.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") and";
+            }
+            
+            
+            if (lines.size() > 0) {
+                where += " _conv_line in (";
+                for (std::list<int>::const_iterator it = lines.begin(); it != lines.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") and";
+            }
+            
+            
+            if (!withUser.empty()) {
+                where += " _from=? and";
+            }
+            
+            int64_t ts = 0;
+            
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                if (desc) {
+                    where += " and _timestamp < ?";
+                } else {
+                    where += " and _timestamp > ?";
+                }
+            }
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                TMessage startMsg = GetMessageById(startPoint);
+                if (startMsg.messageId > 0) {
+                    ts = startMsg.timestamp;
+                } else {
+                    if (desc) {
+                        ts = 9223372036854775807LL;
+                    } else {
+                        ts = 0;
+                    }
+                }
+            }
+            
+            if (contentTypes.size() > 0) {
+                where += " and _cont_type in (";
+                int count = 0;
+                for (std::list<int>::const_iterator it = contentTypes.begin(); it != contentTypes.end(); ++it) {
+                    char buffer[20];
+                    memset(buffer, 0, 20);
+                    sprintf(buffer, "%d", *it);
+                    where += buffer;
+                    count++;
+                    if(count < contentTypes.size()) {
+                        where += ",";
+                    }
+                    
+                }
+                where += ")";
+            }
+            
+            std::string orderBy;
+            if (desc) {
+                orderBy = "_timestamp desc, _id desc";
+            } else {
+                orderBy = "_timestamp asc, _id asc";
+            }
+#ifdef __ANDROID__
+            std::list<std::string> columns;
+            columns.push_back("_id");
+            columns.push_back("_conv_type");
+            columns.push_back("_conv_target");
+            columns.push_back("_conv_line");
+            columns.push_back("_from");
+            columns.push_back("_to");
+            columns.push_back("_cont_type");
+            columns.push_back("_cont_searchable");
+            columns.push_back("_cont_push");
+            columns.push_back("_cont");
+            columns.push_back("_cont_data");
+            columns.push_back("_cont_local");
+            columns.push_back("_cont_media_type");
+            columns.push_back("_cont_remote_media_url");
+            columns.push_back("_cont_local_media_path");
+            columns.push_back("_direction");
+            columns.push_back("_status");
+            columns.push_back("_uid");
+            columns.push_back("_timestamp");
+            columns.push_back("_extra");
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
+                                               columns, where, orderBy, count);
+#else
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
+                                               {
+                                                   "_id",
+                                                   "_conv_type",
+                                                   "_conv_target",
+                                                   "_conv_line",
+                                                   "_from",
+                                                   "_to",
+                                                   "_cont_type",
+                                                   "_cont_searchable",
+                                                   "_cont_push",
+                                                   "_cont",
+                                                   "_cont_data",
+                                                   "_cont_local",
+                                                   "_cont_media_type",
+                                                   "_cont_remote_media_url",
+                                                   "_cont_local_media_path",
+                                                   "_direction",
+                                                   "_status",
+                                                   "_uid",
+                                                   "_timestamp",
+                                                   "_extra"
+                                               }, where, orderBy, count);
+#endif
+            
+            int error = 0;
+            RecyclableStatement statementHandle(db, sql, error);
+            if (error != 0) {
+                return std::list<TMessage>();
+            }
+            
+            int index = 1;
+            if (!withUser.empty()) {
+                db->Bind(statementHandle, withUser, index++);
+            }
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                db->Bind(statementHandle, ts, index++);
+            }
+            
+            std::list<TMessage> result;
+            
+            while (statementHandle.executeSelect()) {
+                TMessage msg;
+                int index = 0;
+                msg.messageId = db->getIntValue(statementHandle, index++);
+                msg.conversationType = db->getIntValue(statementHandle, index++);
+                msg.target = db->getStringValue(statementHandle, index++);
+                msg.line = db->getIntValue(statementHandle, index++);
+                msg.from = db->getStringValue(statementHandle, index++);
+                std::string toStr = db->getStringValue(statementHandle, index++);
+                
+                if (!toStr.empty()) {
+                    std::istringstream f(toStr);
+                    std::string s;
+                    while (getline(f, s, ';')) {
+                        msg.to.push_back(s);
+                    }
+                }
+                
+                
+                msg.content.type = db->getIntValue(statementHandle, index++);
+                msg.content.searchableContent = db->getStringValue(statementHandle, index++);
+                msg.content.pushContent = db->getStringValue(statementHandle, index++);
+                msg.content.content = db->getStringValue(statementHandle, index++);
+                int size = 0;
+                const void *p = db->getBlobValue(statementHandle, index++, size);
+                msg.content.binaryContent = std::string((const char *)p, size);
+                msg.content.localContent = db->getStringValue(statementHandle, index++);
+                msg.content.mediaType = db->getIntValue(statementHandle, index++);
+                msg.content.remoteMediaUrl = db->getStringValue(statementHandle, index++);
+                msg.content.localMediaPath = db->getStringValue(statementHandle, index++);
+                
+                msg.direction = db->getIntValue(statementHandle, index++);
+                msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
+                msg.messageUid = db->getBigIntValue(statementHandle, index++);
+                msg.timestamp = db->getBigIntValue(statementHandle, index++);
+                msg.content.extra = db->getStringValue(statementHandle, index++);
+                result.push_back(msg);
+            }
+            if (desc) {
+                result.reverse();
+            }
+            
+            return result;
+        }
+        
+        std::list<TMessage> MessageDB::GetMessages(const std::list<int> &conversationTypes, const std::list<int> &lines, const int messageStatus, bool desc, int count, long startPoint, const std::string &withUser) {
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return std::list<TMessage>();
+            }
+            std::string where;
+            if (conversationTypes.size() > 0) {
+                where += "_conv_type in (";
+                for (std::list<int>::const_iterator it = conversationTypes.begin(); it != conversationTypes.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") ";
+            }
+            
+            
+            if (lines.size() > 0) {
+                where += " and _conv_line in (";
+                for (std::list<int>::const_iterator it = lines.begin(); it != lines.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") ";
+            }
+            
+            if (messageStatus >= 0) {
+                where += " and _status=? ";
+            }
+            
+            
+            
+            if (!withUser.empty()) {
+                where += " and _from=? ";
+            }
+            
+            int64_t ts = 0;
+            
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                if (desc) {
+                    where += " and _timestamp < ?";
+                } else {
+                    where += " and _timestamp > ?";
+                }
+            }
+            
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                TMessage startMsg = GetMessageById(startPoint);
+                if (startMsg.messageId > 0) {
+                    ts = startMsg.timestamp;
+                } else {
+                    if (desc) {
+                        ts = 9223372036854775807LL;
+                    } else {
+                        ts = 0;
+                    }
+                }
+            }
+            
+            std::string orderBy;
+            if (desc) {
+                orderBy = "_timestamp desc, _id desc";
+            } else {
+                orderBy = "_timestamp asc, _id asc";
+            }
+#ifdef __ANDROID__
+            std::list<std::string> columns;
+            columns.push_back("_id");
+            columns.push_back("_conv_type");
+            columns.push_back("_conv_target");
+            columns.push_back("_conv_line");
+            columns.push_back("_from");
+            columns.push_back("_to");
+            columns.push_back("_cont_type");
+            columns.push_back("_cont_searchable");
+            columns.push_back("_cont_push");
+            columns.push_back("_cont");
+            columns.push_back("_cont_data");
+            columns.push_back("_cont_local");
+            columns.push_back("_cont_media_type");
+            columns.push_back("_cont_remote_media_url");
+            columns.push_back("_cont_local_media_path");
+            columns.push_back("_direction");
+            columns.push_back("_status");
+            columns.push_back("_uid");
+            columns.push_back("_timestamp");
+            columns.push_back("_extra");
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
+                                               columns, where, orderBy, count);
+#else
+            std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
+                                               {
+                                                   "_id",
+                                                   "_conv_type",
+                                                   "_conv_target",
+                                                   "_conv_line",
+                                                   "_from",
+                                                   "_to",
+                                                   "_cont_type",
+                                                   "_cont_searchable",
+                                                   "_cont_push",
+                                                   "_cont",
+                                                   "_cont_data",
+                                                   "_cont_local",
+                                                   "_cont_media_type",
+                                                   "_cont_remote_media_url",
+                                                   "_cont_local_media_path",
+                                                   "_direction",
+                                                   "_status",
+                                                   "_uid",
+                                                   "_timestamp",
+                                                   "_extra"
+                                               }, where, orderBy, count);
+#endif
+            
+            int error = 0;
+            RecyclableStatement statementHandle(db, sql, error);
+            if (error != 0) {
+                return std::list<TMessage>();
+            }
+            
+            int index = 1;
+            if (messageStatus >= 0) {
+                db->Bind(statementHandle, messageStatus, index++);
+            }
+            
+            if (!withUser.empty()) {
+                db->Bind(statementHandle, withUser, index++);
+            }
+            if (startPoint != 0 && startPoint != INT_MAX && startPoint != LONG_MAX && startPoint != 9223372036854775807LL) {
+                db->Bind(statementHandle, ts, index++);
+            }
+            
+            std::list<TMessage> result;
+            
+            while (statementHandle.executeSelect()) {
+                TMessage msg;
+                int index = 0;
+                msg.messageId = db->getIntValue(statementHandle, index++);
+                msg.conversationType = db->getIntValue(statementHandle, index++);
+                msg.target = db->getStringValue(statementHandle, index++);
+                msg.line = db->getIntValue(statementHandle, index++);
+                msg.from = db->getStringValue(statementHandle, index++);
+                std::string toStr = db->getStringValue(statementHandle, index++);
+                
+                if (!toStr.empty()) {
+                    std::istringstream f(toStr);
+                    std::string s;
+                    while (getline(f, s, ';')) {
+                        msg.to.push_back(s);
+                    }
+                }
+                
+                
+                msg.content.type = db->getIntValue(statementHandle, index++);
+                msg.content.searchableContent = db->getStringValue(statementHandle, index++);
+                msg.content.pushContent = db->getStringValue(statementHandle, index++);
+                msg.content.content = db->getStringValue(statementHandle, index++);
+                int size = 0;
+                const void *p = db->getBlobValue(statementHandle, index++, size);
+                msg.content.binaryContent = std::string((const char *)p, size);
+                msg.content.localContent = db->getStringValue(statementHandle, index++);
+                msg.content.mediaType = db->getIntValue(statementHandle, index++);
+                msg.content.remoteMediaUrl = db->getStringValue(statementHandle, index++);
+                msg.content.localMediaPath = db->getStringValue(statementHandle, index++);
+                
+                msg.direction = db->getIntValue(statementHandle, index++);
+                msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
+                msg.messageUid = db->getBigIntValue(statementHandle, index++);
+                msg.timestamp = db->getBigIntValue(statementHandle, index++);
+                msg.content.extra = db->getStringValue(statementHandle, index++);
+                result.push_back(msg);
+            }
+            if (desc) {
+                result.reverse();
+            }
+            
+            return result;
+        }
+        
       TMessage MessageDB::GetMessageById(long messageId) {
           if (messageId < 0) {
               return TMessage();
@@ -1226,6 +1742,7 @@ namespace mars {
         columns.push_back("_status");
         columns.push_back("_uid");
         columns.push_back("_timestamp");
+          columns.push_back("_extra");
         std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
                                                                      columns, where);
 #else
@@ -1249,7 +1766,9 @@ namespace mars {
                                                                        "_direction",
                                                                        "_status",
                                                                        "_uid",
-                                                                       "_timestamp"}, where);
+                                                                       "_timestamp",
+                                                                         "_extra"
+                                                                     }, where);
 #endif
           
           
@@ -1298,6 +1817,7 @@ namespace mars {
           msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
           msg.messageUid = db->getBigIntValue(statementHandle, index++);
           msg.timestamp = db->getBigIntValue(statementHandle, index++);
+          msg.content.extra = db->getStringValue(statementHandle, index++);
         }
         
         return msg;
@@ -1331,6 +1851,7 @@ namespace mars {
         columns.push_back("_status");
         columns.push_back("_uid");
         columns.push_back("_timestamp");
+          columns.push_back("_extra");
         std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
                                                                      columns, where);
 #else
@@ -1354,7 +1875,9 @@ namespace mars {
                                                                        "_direction",
                                                                        "_status",
                                                                        "_uid",
-                                                                       "_timestamp"}, where);
+                                                                       "_timestamp",
+                                                                         "_extra"
+                                                                     }, where);
 #endif
         
           int error = 0;
@@ -1400,6 +1923,7 @@ namespace mars {
           msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
           msg.messageUid = db->getBigIntValue(statementHandle, index++);
           msg.timestamp = db->getBigIntValue(statementHandle, index++);
+          msg.content.extra = db->getStringValue(statementHandle, index++);
         }
         
         return msg;
@@ -1531,9 +2055,9 @@ namespace mars {
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_status");
-            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=? and _status in (?, ?, ?)");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=? and _status in (?, ?, ?)");
 #else
-            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_status"}, "_conv_type=? and _conv_target=? and _conv_line=? and _status in (?, ?, ?)");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_status"}, "_conv_type=? and _conv_line=? and _conv_target=? and _status in (?, ?, ?)");
 #endif
             int error = 0;
             RecyclableStatement updateStatementHandle(db, sql, error);
@@ -1544,8 +2068,8 @@ namespace mars {
             
             db->Bind(updateStatementHandle, Message_Status_Readed, 1);
             db->Bind(updateStatementHandle, conversationType, 2);
-            db->Bind(updateStatementHandle, target, 3);
-            db->Bind(updateStatementHandle, line, 4);
+            db->Bind(updateStatementHandle, line, 3);
+            db->Bind(updateStatementHandle, target, 4);
             db->Bind(updateStatementHandle, Message_Status_Unread, 5);
             db->Bind(updateStatementHandle, Message_Status_Mentioned, 6);
             db->Bind(updateStatementHandle, Message_Status_AllMentioned, 7);
@@ -1562,13 +2086,70 @@ namespace mars {
             return false;
         }
         
+        bool MessageDB::ClearUnreadStatus(const std::list<int> &conversationTypes, const std::list<int> lines) {
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return false;
+            }
+            std::string where;
+            if (conversationTypes.size() > 0) {
+                where += "_conv_type in (";
+                for (std::list<int>::const_iterator it = conversationTypes.begin(); it != conversationTypes.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") and ";
+            }
+            
+            
+            if (lines.size() > 0) {
+                where += "_conv_line in (";
+                for (std::list<int>::const_iterator it = lines.begin(); it != lines.end(); it++) {
+                    char str[255];
+                    memset(str, 0, 255);
+                    sprintf(str, "%d", *it);
+                    where += str;
+                    where += ",";
+                }
+                where = where.substr(0, where.size()-1);
+                where += ") and ";
+            }
+            
+            where += " _status in (?, ?, ?)";
+            
+#ifdef __ANDROID__
+            std::list<std::string> columns;
+            columns.push_back("_status");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, where);
+#else
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_status"}, where);
+#endif
+            int error = 0;
+            RecyclableStatement updateStatementHandle(db, sql, error);
+            if (error != 0) {
+                return false;
+            }
+            
+            db->Bind(updateStatementHandle, Message_Status_Readed, 1);
+            db->Bind(updateStatementHandle, Message_Status_Unread, 2);
+            db->Bind(updateStatementHandle, Message_Status_Mentioned, 3);
+            db->Bind(updateStatementHandle, Message_Status_AllMentioned, 4);
+            int count = db->ExecuteUpdate(updateStatementHandle);
+            
+            return count > 0;
+        }
+        
         int64_t MessageDB::getConversationReadMaxDt(int conversationType, const std::string &target, int line) {
             DB2 *db = DB2::Instance();
             if (!db->isOpened()) {
                 return 0;
             }
             
-             std::string where = "_direction=1 and _conv_type=? and _conv_target=? and _conv_line=?";
+             std::string where = "_conv_type=? and _conv_line=? and _conv_target=? and _direction=1";
             
 #ifdef __ANDROID__
             std::list<std::string> columns;
@@ -1584,8 +2165,8 @@ namespace mars {
             }
             
             db->Bind(statementHandle, conversationType, 1);
-            db->Bind(statementHandle, target, 2);
-            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, line, 2);
+            db->Bind(statementHandle, target, 3);
             
             if(statementHandle.executeSelect()) {
                 return db->getBigIntValue(statementHandle, 0);
@@ -1602,9 +2183,9 @@ namespace mars {
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_status");
-            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_target=? and _conv_line=? and  _timestamp <= ? and _status in (?, ?, ?)");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, columns, "_conv_type=? and _conv_line=? and _conv_target=? and  _timestamp <= ? and _status in (?, ?, ?)");
 #else
-            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_status"}, "_conv_type=? and _conv_target=? and _conv_line=? and _timestamp <= ? and _status in (?, ?, ?)");
+            std::string sql = db->GetUpdateSql(MESSAGE_TABLE_NAME, {"_status"}, "_conv_type=? and _conv_line=? and _conv_target=? and _timestamp <= ? and _status in (?, ?, ?)");
 #endif
             
             int error = 0;
@@ -1615,8 +2196,8 @@ namespace mars {
             
             db->Bind(updateStatementHandle, Message_Status_Readed, 1);
             db->Bind(updateStatementHandle, conversationType, 2);
-            db->Bind(updateStatementHandle, target, 3);
-            db->Bind(updateStatementHandle, line, 4);
+            db->Bind(updateStatementHandle, line, 3);
+            db->Bind(updateStatementHandle, target, 4);
             db->Bind(updateStatementHandle, dt, 5);
             db->Bind(updateStatementHandle, Message_Status_Unread, 6);
             db->Bind(updateStatementHandle, Message_Status_Mentioned, 7);
@@ -1716,8 +2297,9 @@ namespace mars {
             columns.push_back("_status");
             columns.push_back("_uid");
             columns.push_back("_timestamp");
+            columns.push_back("_extra");
             std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
-                                                                         columns, "_conv_type=? and _conv_target=? and _conv_line=? and _cont_searchable like ?", "_timestamp desc", limit);
+                                                                         columns, "_conv_type=? and _conv_line=? and _conv_target=? and _cont_searchable like ?", "_timestamp desc", limit);
 #else
             std::string sql = db->GetSelectSql(MESSAGE_TABLE_NAME,
                                                                                {
@@ -1739,7 +2321,9 @@ namespace mars {
                                                                                    "_direction",
                                                                                    "_status",
                                                                                    "_uid",
-                                                                                   "_timestamp"}, "_conv_type=? and _conv_target=? and _conv_line=? and _cont_searchable like ?", "_timestamp desc", limit);
+                                                                                   "_timestamp",
+                                                                                   "_extra"
+                                                                               }, "_conv_type=? and _conv_line=? and _conv_target=? and _cont_searchable like ?", "_timestamp desc", limit);
 #endif
             
             int error = 0;
@@ -1749,8 +2333,8 @@ namespace mars {
             }
             
             db->Bind(statementHandle, conversationType, 1);
-            db->Bind(statementHandle, target, 2);
-            db->Bind(statementHandle, line, 3);
+            db->Bind(statementHandle, line, 2);
+            db->Bind(statementHandle, target, 3);
             db->Bind(statementHandle, "%" + keyword + "%", 4);
             
             std::list<TMessage> result;
@@ -1788,7 +2372,7 @@ namespace mars {
                 msg.status = (MessageStatus)db->getIntValue(statementHandle, index++);
                 msg.messageUid = db->getBigIntValue(statementHandle, index++);
                 msg.timestamp = db->getBigIntValue(statementHandle, index++);
-                
+                msg.content.extra = db->getStringValue(statementHandle, index++);
                 result.push_back(msg);
             }
             
@@ -1902,14 +2486,14 @@ namespace mars {
             columnRight.push_back("_extra");
             columnRight.push_back("_update_dt");
             std::string sql = db->GetSelectSqlEx(FRIEND_TABLE_NAME,
-                                                                         columnLeft,USER_TABLE_NAME, columnRight, "l._friend_uid = r._uid and l._state = 0 and r._display_name like ? ", "", limit);
+                                                                         columnLeft,USER_TABLE_NAME, columnRight, "l._friend_uid = r._uid and l._state = 0 and (r._display_name like ? or l._alias like ?) ", "", limit);
 #else
             std::string sql = db->GetSelectSqlEx(FRIEND_TABLE_NAME,
                                                                          {
                                                                          },
                                                                           USER_TABLE_NAME,
                                                                            {"_uid",  "_name", "_display_name", "_portrait", "_gender", "_mobile", "_email", "_address", "_company", "_social", "_extra", "_update_dt"},
-                                                                           "l._friend_uid = r._uid and l._state = 0 and r._display_name like ? ", "", limit);
+                                                                           "l._friend_uid = r._uid and l._state = 0 and (r._display_name like ? or l._alias like ?) ", "", limit);
 #endif
             
             int error = 0;
@@ -1919,6 +2503,7 @@ namespace mars {
             }
             
             db->Bind(statementHandle, "%" + keyword + "%", 1);
+            db->Bind(statementHandle, "%" + keyword + "%", 2);
             std::list<TUserInfo> results;
             
             while (statementHandle.executeSelect()) {
@@ -1938,6 +2523,7 @@ namespace mars {
                 results.push_back(ui);
             }
             
+            xerror2(TSF"search friends result length:%0", results.size());
             return results;
         }
         
@@ -1957,9 +2543,13 @@ namespace mars {
             columns.push_back("_extra");
             columns.push_back("_member_count");
             columns.push_back("_update_dt");
+            columns.push_back("_mute");
+            columns.push_back("_join_type");
+            columns.push_back("_private_chat");
+            columns.push_back("_searchable");
             std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, columns, "_name like ?", "", limit);
 #else
-            std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, {"_uid", "_name",  "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt"}, "_name like ?", "", limit);
+            std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, {"_uid", "_name",  "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt", "_mute", "_join_type", "_private_chat", "_searchable"}, "_name like ?", "", limit);
 #endif
             
             int error = 0;
@@ -1982,6 +2572,10 @@ namespace mars {
                 result.groupInfo.extra = db->getStringValue(statementHandle, 5);
                 result.groupInfo.memberCount = db->getIntValue(statementHandle, 6);
                 result.groupInfo.updateDt = db->getBigIntValue(statementHandle, 7);
+                result.groupInfo.mute = db->getBigIntValue(statementHandle, 8);
+                result.groupInfo.joinType = db->getBigIntValue(statementHandle, 9);
+                result.groupInfo.privateChat = db->getBigIntValue(statementHandle, 10);
+                result.groupInfo.searchable = db->getBigIntValue(statementHandle, 11);
                 result.marchedType = 0;
                 results.push_back(result);
             }
@@ -2081,6 +2675,7 @@ namespace mars {
             if (!db->isOpened()) {
                 return gi;
             }
+            
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_name");
@@ -2090,9 +2685,13 @@ namespace mars {
             columns.push_back("_extra");
             columns.push_back("_member_count");
             columns.push_back("_update_dt");
+            columns.push_back("_mute");
+            columns.push_back("_join_type");
+            columns.push_back("_private_chat");
+            columns.push_back("_searchable");
             std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, columns, "_uid=?");
 #else
-            std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, {"_name",  "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt"}, "_uid=?");
+            std::string sql = db->GetSelectSql(GROUP_TABLE_NAME, {"_name",  "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt", "_mute", "_join_type", "_private_chat", "_searchable"}, "_uid=?");
 #endif
             
             int error = 0;
@@ -2112,7 +2711,10 @@ namespace mars {
                 gi.extra = db->getStringValue(statementHandle, 4);
                 gi.memberCount = db->getIntValue(statementHandle, 5);
                 gi.updateDt = db->getBigIntValue(statementHandle, 6);
-                
+                gi.mute = db->getIntValue(statementHandle, 7);
+                gi.joinType = db->getIntValue(statementHandle, 8);
+                gi.privateChat = db->getIntValue(statementHandle, 9);
+                gi.searchable = db->getIntValue(statementHandle, 10);
             } else {
                 gi.target = "";//empty
                 gi.updateDt = 0;
@@ -2142,9 +2744,13 @@ namespace mars {
             columns.push_back("_extra");
             columns.push_back("_member_count");
             columns.push_back("_update_dt");
+            columns.push_back("_mute");
+            columns.push_back("_join_type");
+            columns.push_back("_private_chat");
+            columns.push_back("_searchable");
             std::string sql = db->GetInsertSql(GROUP_TABLE_NAME, columns, true);
 #else
-            std::string sql = db->GetInsertSql(GROUP_TABLE_NAME, {"_uid", "_name", "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt"}, true);
+            std::string sql = db->GetInsertSql(GROUP_TABLE_NAME, {"_uid", "_name", "_portrait", "_owner", "_type", "_extra", "_member_count", "_update_dt", "_mute", "_join_type", "_private_chat", "_searchable"}, true);
 #endif
             
             int error = 0;
@@ -2162,6 +2768,10 @@ namespace mars {
             db->Bind(statementHandle, groupInfo.extra, 6);
             db->Bind(statementHandle, groupInfo.memberCount, 7);
             db->Bind(statementHandle, groupInfo.updateDt, 8);
+            db->Bind(statementHandle, groupInfo.mute, 9);
+            db->Bind(statementHandle, groupInfo.joinType, 10);
+            db->Bind(statementHandle, groupInfo.privateChat, 11);
+            db->Bind(statementHandle, groupInfo.searchable, 12);
             long ret = 0;
             ret = db->ExecuteInsert(statementHandle, &ret);
             return ret;
@@ -2239,7 +2849,7 @@ namespace mars {
                 member.memberId = db->getStringValue(statementHandle, 1);
                 member.alias = db->getStringValue(statementHandle, 2);
                 member.type = db->getIntValue(statementHandle, 3);
-                member.updateDt = db->getBigIntValue(statementHandle, 10);
+                member.updateDt = db->getBigIntValue(statementHandle, 4);
                 resultList.push_back(member);
                 if (member.updateDt > maxDt) {
                     maxDt = member.updateDt;
@@ -2285,7 +2895,7 @@ namespace mars {
                 member.memberId = db->getStringValue(statementHandle, 1);
                 member.alias = db->getStringValue(statementHandle, 2);
                 member.type = db->getIntValue(statementHandle, 3);
-                member.updateDt = db->getBigIntValue(statementHandle, 10);
+                member.updateDt = db->getBigIntValue(statementHandle, 4);
             }
             
             return member;
@@ -2366,39 +2976,34 @@ namespace mars {
             return;
         }
         
-        TUserInfo MessageDB::getUserInfo(const std::string &userId, bool refresh) {
+        TUserInfo MessageDB::getUserInfo(const std::string &userId, const std::string &groupId, bool refresh) {
             DB2 *db = DB2::Instance();
             TUserInfo ui;
             if (!db->isOpened()) {
                 return ui;
             }
 
-#ifdef __ANDROID__
-            std::list<std::string> columns;
-            columns.push_back("_uid");
-            columns.push_back( "_name");
-            columns.push_back("_display_name");
-            columns.push_back("_portrait");
-            columns.push_back("_gender");
-            columns.push_back("_mobile");
-            columns.push_back("_email");
-            columns.push_back("_address");
-            columns.push_back("_company");
-            columns.push_back("_social");
-            columns.push_back("_extra");
-            columns.push_back("_type");
-            columns.push_back("_update_dt");
-            std::string sql = db->GetSelectSql(USER_TABLE_NAME, columns, "_uid=?");
-#else
-            std::string sql = db->GetSelectSql(USER_TABLE_NAME, {"_uid",  "_name", "_display_name",  "_portrait", "_gender", "_mobile", "_email", "_address", "_company", "_social", "_extra", "_type", "_update_dt"}, "_uid=?");
-#endif
+            std::string sql;
+            if (groupId.empty()) {
+                sql = "select l._uid,l._name,l._display_name,l._portrait,l._gender,l._mobile,l._email,l._address,l._company,l._social,l._extra,l._type,l._update_dt,m._alias from t_user as l left join t_friend as m on l._uid=m._friend_uid where l._uid = ? limit 1";
+            } else {
+                sql = "select l._uid,l._name,l._display_name,l._portrait,l._gender,l._mobile,l._email,l._address,l._company,l._social,l._extra,l._type,l._update_dt,m._alias,r._alias from t_user as l left join t_friend as m on l._uid=m._friend_uid left join (select _mid, _alias from t_group_member where _gid = ?) as r  on l._uid=r._mid where l._uid = ? limit 1";
+            }
+            
+            
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
             if (error != 0) {
                 return ui;
             }
             
-            db->Bind(statementHandle, userId, 1);
+            int index = 1;
+            if (!groupId.empty()) {
+                db->Bind(statementHandle, groupId, index++);
+            }
+            
+            db->Bind(statementHandle, userId, index++);
+            
             std::list<std::pair<std::string, int64_t>> refreshReqList;
             
             if (statementHandle.executeSelect()) {
@@ -2415,6 +3020,10 @@ namespace mars {
                 ui.extra = db->getStringValue(statementHandle, 10);
                 ui.type = db->getIntValue(statementHandle, 11);
                 ui.updateDt = db->getBigIntValue(statementHandle, 12);
+                ui.friendAlias = db->getStringValue(statementHandle, 13);
+                if (!groupId.empty()) {
+                    ui.groupAlias = db->getStringValue(statementHandle, 14);
+                }
             } else {
                 ui.updateDt = 0;
             }
@@ -2423,8 +3032,86 @@ namespace mars {
                 std::list<std::pair<std::string, int64_t>> reqList;
                 reqList.push_back(std::pair<std::string, int64_t>(userId, ui.updateDt));
                 reloadUserInfoFromRemote(reqList);
+                xerror2("get user info refresh %s, %d,ver:%d",userId.c_str(), refresh, ui.uid.empty());
             }
             return ui;
+        }
+        std::list<TUserInfo> MessageDB::getUserInfos(const std::list<std::string> &userIds, const std::string &groupId) {
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return std::list<TUserInfo>();
+            }
+            
+            std::string sql;
+            std::string uidStr;
+            for (std::list<std::string>::const_iterator it = userIds.begin(); it != userIds.end();) {
+                std::string userId = *it;
+                uidStr += "'";
+                uidStr += userId;
+                uidStr += "'";
+                ++it;
+                if (it != userIds.end()) {
+                    uidStr += ",";
+                }
+            }
+            if (groupId.empty()) {
+                sql = "select l._uid,l._name,l._display_name,l._portrait,l._gender,l._mobile,l._email,l._address,l._company,l._social,l._extra,l._type,l._update_dt,m._alias from t_user as l left join t_friend as m on l._uid=m._friend_uid where l._uid in (" + uidStr + ")";
+            } else {
+                sql = "select l._uid,l._name,l._display_name,l._portrait,l._gender,l._mobile,l._email,l._address,l._company,l._social,l._extra,l._type,l._update_dt,m._alias,r._alias from t_user as l left join t_friend as m on l._uid=m._friend_uid left join (select _mid, _alias from t_group_member where _gid = ?) as r  on l._uid=r._mid where l._uid in (" + uidStr + ")";
+            }
+            
+            
+            int error = 0;
+            RecyclableStatement statementHandle(db, sql, error);
+            if (error != 0) {
+                return std::list<TUserInfo>();;
+            }
+            
+            int index = 1;
+            if (!groupId.empty()) {
+                db->Bind(statementHandle, groupId, index++);
+            }
+            
+            std::list<TUserInfo> out;
+            
+            std::list<std::string> needRefreshList = userIds;
+            while (statementHandle.executeSelect()) {
+                TUserInfo ui;
+                ui.uid = db->getStringValue(statementHandle, 0);
+                ui.name = db->getStringValue(statementHandle, 1);
+                ui.displayName = db->getStringValue(statementHandle, 2);
+                ui.portrait = db->getStringValue(statementHandle, 3);
+                ui.gender = db->getIntValue(statementHandle, 4);
+                ui.mobile = db->getStringValue(statementHandle, 5);
+                ui.email = db->getStringValue(statementHandle, 6);
+                ui.address = db->getStringValue(statementHandle, 7);
+                ui.company = db->getStringValue(statementHandle, 8);
+                ui.social = db->getStringValue(statementHandle, 9);
+                ui.extra = db->getStringValue(statementHandle, 10);
+                ui.type = db->getIntValue(statementHandle, 11);
+                ui.updateDt = db->getBigIntValue(statementHandle, 12);
+                ui.friendAlias = db->getStringValue(statementHandle, 13);
+                if (!groupId.empty()) {
+                    ui.groupAlias = db->getStringValue(statementHandle, 14);
+                }
+                out.insert(out.end(), ui);
+                needRefreshList.remove(ui.uid);
+            }
+            
+            if (!needRefreshList.empty()) {
+                std::list<std::pair<std::string, int64_t>> reqList;
+                for (std::list<std::string>::iterator it = needRefreshList.begin(); it != needRefreshList.end(); ++it) {
+                    if (reqList.size() < 2000) {
+                        reqList.push_back(std::pair<std::string, int64_t>(*it, 0));
+                    }
+                    
+                    TUserInfo ui;
+                    ui.uid = *it;
+                    out.insert(out.end(), ui);
+                }
+                reloadUserInfoFromRemote(reqList);
+            }
+            return out;
         }
         /*
          Modify_DisplayName = 0,
@@ -2690,6 +3377,35 @@ namespace mars {
             return result;
         }
         
+        std::string MessageDB::GetFriendAlias(const std::string &friendId) {
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return std::string();
+            }
+            
+#ifdef __ANDROID__
+            std::list<std::string> columns;
+            columns.push_back("_alias");
+            std::string sql = db->GetSelectSql(FRIEND_TABLE_NAME, columns, "_friend_uid=?");
+#else
+            std::string sql = db->GetSelectSql(FRIEND_TABLE_NAME, {"_alias"}, "_friend_uid=?");
+#endif
+            
+            int error = 0;
+            RecyclableStatement statementHandle(db, sql, error);
+            if (error != 0) {
+                return std::string();
+            }
+            
+            std::string alias;
+            db->Bind(statementHandle, friendId, 1);
+            if(statementHandle.executeSelect()) {
+                alias = db->getStringValue(statementHandle, 0);
+            }
+            
+            return alias;
+        }
+        
         int64_t MessageDB::getFriendRequestHead() {
             DB2 *db = DB2::Instance();
             if (!db->isOpened()) {
@@ -2787,7 +3503,7 @@ namespace mars {
             return ret;
         }
         
-        long MessageDB::InsertFriendOrReplace(const std::string &friendUid, int state, int64_t timestamp) {
+        long MessageDB::InsertFriendOrReplace(const std::string &friendUid, int state, int64_t timestamp, const std::string &alias) {
             DB2 *db = DB2::Instance();
 
             if (!db->isOpened()) {
@@ -2798,9 +3514,10 @@ namespace mars {
             columns.push_back("_friend_uid");
             columns.push_back("_state");
             columns.push_back("_update_dt");
+            columns.push_back("_alias");
             std::string sql = db->GetInsertSql(FRIEND_TABLE_NAME, columns, true);
 #else
-            std::string sql = db->GetInsertSql(FRIEND_TABLE_NAME, {"_friend_uid", "_state", "_update_dt"}, true);
+            std::string sql = db->GetInsertSql(FRIEND_TABLE_NAME, {"_friend_uid", "_state", "_update_dt", "_alias"}, true);
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);
@@ -2811,10 +3528,35 @@ namespace mars {
             db->Bind(statementHandle, friendUid, 1);
             db->Bind(statementHandle, state, 2);
             db->Bind(statementHandle, timestamp, 3);
+            db->Bind(statementHandle, alias, 4);
             
             long ret = 0;
             ret = db->ExecuteInsert(statementHandle, &ret);
             return ret;
+        }
+        
+        bool MessageDB::DeleteFriend(const std::string &friendUid) {
+            if (friendUid.empty()) {
+                return false;
+            }
+            
+            DB2 *db = DB2::Instance();
+            if (!db->isOpened()) {
+                return false;
+            }
+            
+            std::string sql = db->GetDeleteSql(FRIEND_TABLE_NAME, "_friend_uid=?");
+            
+            int error = 0;
+            RecyclableStatement statementHandle(db, sql, error);
+            
+            statementHandle.bind(1, friendUid);
+            
+            if (db->ExecuteDelete(statementHandle) > 0) {
+                return true;
+            }
+            
+            return false;
         }
         
         std::list<TFriendRequest> MessageDB::getFriendRequest(int direction) {
@@ -2825,6 +3567,7 @@ namespace mars {
             if (!db->isOpened()) {
                 return requests;
             }
+
 #ifdef __ANDROID__
             std::list<std::string> columns;
             columns.push_back("_target_uid");
@@ -2832,9 +3575,9 @@ namespace mars {
             columns.push_back("_status");
             columns.push_back("_read_status");
             columns.push_back("_update_dt");
-            std::string sql = db->GetSelectSql(FRIEND_REQUEST_TABLE_NAME, columns, "_direction=?");
+            std::string sql = db->GetSelectSql(FRIEND_REQUEST_TABLE_NAME, columns, "_direction=?", "_id desc");
 #else
-            std::string sql = db->GetSelectSql(FRIEND_REQUEST_TABLE_NAME, {"_target_uid", "_reason", "_status", "_read_status", "_update_dt"}, "_direction=?");
+            std::string sql = db->GetSelectSql(FRIEND_REQUEST_TABLE_NAME, {"_target_uid", "_reason", "_status", "_read_status", "_update_dt"}, "_direction=?", "_id desc");
 #endif
             int error = 0;
             RecyclableStatement statementHandle(db, sql, error);

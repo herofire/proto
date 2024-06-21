@@ -16,6 +16,8 @@ public class ProtoUserInfo {
     private String company;
     private String social;
     private String extra;
+    private String friendAlias;
+    private String groupAlias;
     private long updateDt;
     private int type;
 
@@ -97,6 +99,22 @@ public class ProtoUserInfo {
 
     public void setExtra(String extra) {
         this.extra = extra;
+    }
+
+    public String getFriendAlias() {
+        return friendAlias;
+    }
+
+    public void setFriendAlias(String friendAlias) {
+        this.friendAlias = friendAlias;
+    }
+
+    public String getGroupAlias() {
+        return groupAlias;
+    }
+
+    public void setGroupAlias(String groupAlias) {
+        this.groupAlias = groupAlias;
     }
 
     public long getUpdateDt() {

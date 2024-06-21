@@ -49,6 +49,10 @@ namespace mars{
             std::string extra;
             int64_t updateDt;
             int64_t memberUpdateDt;
+            int mute;
+            int joinType;
+            int privateChat;
+            int searchable;
         };
         
         typedef enum {
@@ -63,7 +67,7 @@ namespace mars{
         protected:
             virtual const char* getTypeName();
         public:
-            GroupMember() {}
+            GroupMember():type(GroupMemberType_Normal), updateDt(0) {}
             virtual ~GroupMember() {}
             virtual bool unserializeFromPBMsg(struct pbc_rmessage *msg, bool destroy);
             virtual void serializeToPBMsg(struct pbc_wmessage* msg);

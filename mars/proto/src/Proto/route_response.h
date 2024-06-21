@@ -33,6 +33,7 @@ namespace mars{
             std::string host;
             int longPort;
             int shortPort;
+            std::string thumbPara;
         };
     }
 }

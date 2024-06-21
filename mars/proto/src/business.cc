@@ -31,6 +31,7 @@
 #include "mars/proto/src/Proto/dismiss_group_request.h"
 #include "mars/proto/src/Proto/modify_group_alias.h"
 #include "mars/proto/src/Proto/modify_group_info.h"
+#include "mars/proto/src/Proto/set_group_manager.h"
 #include "mars/proto/src/Proto/id_buf.h"
 #include "mars/proto/src/Proto/int64_buf.h"
 #include "mars/proto/src/Proto/id_list_buf.h"
@@ -73,6 +74,7 @@
 #include "mars/app/app.h"
 #include <iostream>
 #include "comm/crypt/ibase64.h"
+#include "mars/comm/xlogger/xlogger.h"
 
 #if WFCHAT_PROTO_SERIALIZABLE
 #include "rapidjson/rapidjson.h"
@@ -87,6 +89,8 @@ extern unsigned char use_key[16];
 namespace mars{
     namespace stn{
 
+    
+    extern std::string getEncodedId(const std::string &id);
 
 const std::string sendMessageTopic = "MS";
 const std::string recallMessageTopic = "MR";
@@ -108,11 +112,14 @@ const std::string getGroupInfoTopic = "GPGI";
 const std::string getUserInfoTopic = "UPUI";
 const std::string getGroupMemberTopic = "GPGM";
 const std::string transferGroupTopic = "GTG";
+const std::string setGroupManagerTopic = "GSM";
 const std::string getQiniuUploadTokenTopic = "GQNUT";
+const std::string getMediaUploadTokenTopic = "GMUT";
 const std::string modifyMyInfoTopic = "MMI";
 const std::string AddFriendRequestTopic = "FAR";
 const std::string HandleFriendRequestTopic = "FHR";
 const std::string DeleteFriendTopic = "FDL";
+const std::string SetFriendAliasTopic = "FALS";
 const std::string friendRequestUnreadSyncTopic = "FRUS";
 const std::string BlackListUserTopic = "BLU";
 const std::string UploadDeviceTokenTopic = "UDT";
@@ -140,6 +147,8 @@ std::string g_chatroomId = "";
 
         static bool isRoutring = false;
 
+        static UserServerAddress GUS;
+        
 class BusinessRouteCallback : public MQTTPublishCallback {
 public:
     BusinessRouteCallback() : MQTTPublishCallback()  {}
@@ -158,18 +167,20 @@ public:
 
             gHost = response.host;
 
-            UserServerAddress us;
-            us.host = gHost;
-            us.longLinkPort = response.longPort;
-            us.shortLinkPort = response.shortPort;
+            
+            GUS.host = gHost;
+            GUS.longLinkPort = response.longPort;
+            GUS.shortLinkPort = response.shortPort;
+            GUS.thumbPara = response.thumbPara;
+            GUS.updateDt = (int64_t)time(NULL);
 
-            DB2::Instance()->UpdateUserServerAddress(gUserId, us);
+            DB2::Instance()->UpdateUserServerAddress(gUserId, GUS);
 
             MakesureLonglinkConnected();
             mars::baseevent::OnForeground(true);
 
             //if current use info is null that means he/she first time login, cache friend list for he/she.
-            TUserInfo tuserInfo = MessageDB::Instance()->getUserInfo(mars::app::GetAccountUserName(), false);
+            TUserInfo tuserInfo = MessageDB::Instance()->getUserInfo(mars::app::GetAccountUserName(), "", false);
             if (tuserInfo.uid.empty()) {
                 MessageDB::Instance()->getMyFriendList(false);
             }
@@ -262,6 +273,9 @@ public:
                 request.phoneName = deviceInfo.phonename;
                 request.platform = deviceInfo.platform;
                 request.pushType = deviceInfo.pushtype;
+                if(request.pushType >= 16) {
+                    request.pushType = 0; //protect code.
+                }
                 request.appversion = deviceInfo.appversion;
                 request.sdkversion = deviceInfo.sdkversion;
 
@@ -271,36 +285,40 @@ public:
 
         }
 
-void (*Connect)(const std::string& host, uint16_t shortLinkPort)
-= [](const std::string& host, uint16_t shortLinkPort) {
+bool Connect(const std::string& host, uint16_t shortLinkPort) {
     gRouteHost = host;
     gRoutePort = shortLinkPort;
 
     NetSource::SetShortlink(shortLinkPort, "");
 
-    UserServerAddress us = DB2::Instance()->GetUserServerAddress(gUserId);
-    if(!us.host.empty() && us.longLinkPort > 0 && us.shortLinkPort > 0) {
+    GUS = DB2::Instance()->GetUserServerAddress(gUserId);
+    if(!GUS.host.empty() && GUS.longLinkPort > 0 && GUS.shortLinkPort > 0) {
         std::vector<std::string> hosts;
-        hosts.push_back(us.host);
+        hosts.push_back(GUS.host);
         StnCallBack::Instance()->mAuthed = true;
         std::vector<uint16_t> longLinkPorts;
-        longLinkPorts.push_back(us.longLinkPort);
+        longLinkPorts.push_back(GUS.longLinkPort);
 
-        NetSource::SetShortlink(us.shortLinkPort, "");
+        NetSource::SetShortlink(GUS.shortLinkPort, "");
         NetSource::SetLongLink(hosts, longLinkPorts, "");
-        gHost = us.host;
+        gHost = GUS.host;
 
         MakesureLonglinkConnected();
 
         //首次连接如果离上次route超过1小时，强制刷新route信息。
         //在前后台切换或者网络切换时，超过12小时，强制刷新route信息。
         //你问我为啥是这个值，我也不知道！！！
-        if(((int64_t)time(NULL) - us.updateDt) > 3600) {
+        if(((int64_t)time(NULL) - GUS.updateDt) > 3600) {
             RequestRoute(true);
         }
     }
 
     mars::baseevent::OnForeground(true);
+    if (DB2::Instance()->newCreatedDB) {
+        DB2::Instance()->newCreatedDB = false;
+        return true;
+    }
+    return false;
 };
 
 class GeneralOperationPublishCallback : public MQTTPublishCallback {
@@ -322,6 +340,27 @@ public:
     }
 };
 
+        class DeleteFriendPublishCallback : public MQTTPublishCallback {
+        public:
+            DeleteFriendPublishCallback(GeneralOperationCallback *cb, const std::string &fid) : MQTTPublishCallback(), callback(cb), friendUid(fid) {}
+            GeneralOperationCallback *callback;
+            std::string friendUid;
+            void onSuccess(const unsigned char* data, size_t len) {
+                mars::stn::MessageDB::Instance()->DeleteFriend(friendUid);
+                if(callback)
+                    callback->onSuccess();
+                delete this;
+            };
+            void onFalure(int errorCode) {
+                if(callback)
+                    callback->onFalure(errorCode);
+                delete this;
+            };
+            virtual ~DeleteFriendPublishCallback() {
+                
+            }
+        };
+        
         class RecallMessagePublishCallback : public MQTTPublishCallback {
         public:
             RecallMessagePublishCallback(GeneralOperationCallback *cb, long long messageUid) : MQTTPublishCallback(), callback(cb), uid(messageUid) {}
@@ -618,6 +657,7 @@ void fillMessageContent(TMessageContent &tcontent, MessageContent *content, int 
     content->mentionedTargets = tcontent.mentionedTargets;
     content->expireDuration = expireDuration;
     content->persistFlag = MessageDB::Instance()->getMessageFlag(content->type);
+    content->extra = tcontent.extra;
 }
 
 void fillConversation(TMessage &tmsg, Conversation *conversation) {
@@ -667,23 +707,33 @@ public:
 };
 class GetUploadTokenCallback : public MQTTPublishCallback {
 public:
-    GetUploadTokenCallback(UpdateMediaCallback *cb, const std::string md) : MQTTPublishCallback(), callback(cb), mediaData(md) {}
+    GetUploadTokenCallback(UpdateMediaCallback *cb, const std::string &md, const std::string &key, const std::string &fileName) : MQTTPublishCallback(), callback(cb), mediaData(md), mKey(key), mFileName(fileName) {}
     UpdateMediaCallback *callback;
     std::string mediaData;
     long mMid;
     TMessage msg;
+    std::string mKey;
+    std::string mFileName;
     void onSuccess(const unsigned char* data, size_t len) {
         GetUploadTokenResult result;
         if(result.unserializeFromPBData((const void*)data, (int)len)) {
-            UploadTask *uploadTask = new UploadTask(mediaData, result.token, msg.content.mediaType, new UploadQiniuCallback(callback, result.domain));
-            uploadTask->cgi = "/fs";//*/result.server();
+            UploadTask *uploadTask = new UploadTask(mediaData, result.token, msg.content.mediaType, mKey, result.type, result.date, mFileName, new UploadQiniuCallback(callback, result.domain));
+            if (result.type == 0) {
+                uploadTask->cgi = "/fs";//*/result.server();
+            } else if (result.type == 3){
+                std::string tempKey = result.path + "/" + mKey;
+                tempKey = getEncodedId(tempKey);
+                uploadTask->cgi = "/fs/" + tempKey;
+            } else {
+                uploadTask->cgi = "/" + mKey;
+            }
+            
             std::string server = result.server;
             uploadTask->shortlink_host_list.push_back(server);
             StartTask(*uploadTask);
         } else {
             callback->onFalure(kEcProtoCorruptData);
         }
-
 
         delete this;
     };
@@ -724,6 +774,54 @@ public:
     virtual ~UploadMediaForSendCallback() {}
 };
 
+    std::string getRandomId(int length) {
+        std::string Output;
+        std::stringstream ss;
+        
+        for (int i = 0; i < length; i++) {
+            int r = rand()%62;
+            char ch;
+            if (r < 26) {
+                ch = 'a' + r;
+            } else if(r < 52) {
+                ch = 'A' + r - 26;
+            } else {
+                ch = '0' + r - 52;
+            }
+            ss << ch;
+        }
+        
+        ss >> Output;
+        
+        return Output;
+    }
+    
+        std::string getMediaPath(int mediaType, const std::string &fileName) {
+            std::string filePath;
+            std::stringstream ss;
+            ss << mars::app::GetAccountUserName();
+            ss << "-";
+            ss << mediaType;
+            ss << "-";
+            ss << time(NULL);
+            ss << "-";
+            ss << getRandomId(8);
+            ss << "_";
+            ss << fileName;
+            if (fileName.find_last_of('.') < 0) {
+                if (mediaType == 1 || mediaType == 6) {
+                    ss << ".jpg";
+                } else if(mediaType == 2) {
+                    ss << ".amr";
+                } else if(mediaType == 3) {
+                    ss << ".mp4";
+                }
+            }
+            ss >> filePath;
+            
+            return filePath;
+        }
+        
 int (*sendMessage)(TMessage &tmsg, SendMsgCallback *callback, int expireDuration)
 = [](TMessage &tmsg, SendMsgCallback *callback, int expireDuration) {
     tmsg.timestamp = ((int64_t)time(NULL))*1000;
@@ -738,23 +836,41 @@ int (*sendMessage)(TMessage &tmsg, SendMsgCallback *callback, int expireDuration
 
         char * buffer;
         long size;
+#ifdef _WIN32
+		DWORD dwMinSize = ::MultiByteToWideChar(CP_UTF8, 0, tmsg.content.localMediaPath.c_str(), -1, NULL, 0);
+		wchar_t * wstrUnicoe = new wchar_t[dwMinSize];
+		wmemset(wstrUnicoe, 0, dwMinSize);
+		dwMinSize = ::MultiByteToWideChar(CP_UTF8, 0, tmsg.content.localMediaPath.c_str(), -1, wstrUnicoe, dwMinSize);
+		std::ifstream file(wstrUnicoe, std::ios::in | std::ios::binary | std::ios::ate);
+		free(wstrUnicoe);
+#else
         std::ifstream file (tmsg.content.localMediaPath.c_str(), std::ios::in|std::ios::binary|std::ios::ate);
+#endif
         size = file.tellg();
         file.seekg (0, std::ios::beg);
         buffer = new char [size];
         file.read (buffer, size);
         file.close();
-
         std::string md(buffer, size);
-
         delete [] buffer;
-
-        mars::stn::MQTTPublishTask *publishTask = new mars::stn::MQTTPublishTask(new GetUploadTokenCallback(new UploadMediaForSendCallback(callback, tmsg, id, expireDuration), md));
-        publishTask->topic = getQiniuUploadTokenTopic;
-        publishTask->length = 1;
-        publishTask->body = new unsigned char[1];
-        *(publishTask->body) = (unsigned char)tmsg.content.mediaType;
-        mars::stn::StartTask(*publishTask);
+        
+        std::string::size_type iPos =  tmsg.content.localMediaPath.find_last_of('/') + 1;
+        if(iPos < 1 || iPos > tmsg.content.localMediaPath.length() - 1) {
+            iPos =  tmsg.content.localMediaPath.find_last_of('\\') + 1;
+        }
+        
+        std::string fileName;
+        
+        if(iPos > 1 && iPos < tmsg.content.localMediaPath.length()) {
+            fileName = tmsg.content.localMediaPath.substr(iPos, tmsg.content.localMediaPath.length() - iPos);
+        }
+        
+   
+        std::string key = getMediaPath(tmsg.content.mediaType, fileName);
+        GetUploadTokenRequest *request = new GetUploadTokenRequest();
+        request->type = tmsg.content.mediaType;
+        request->path = key;
+        publishTask(request, new GetUploadTokenCallback(new UploadMediaForSendCallback(callback, tmsg, id, expireDuration), md, key, fileName), getMediaUploadTokenTopic, false);
     } else {
         sendSavedMsg(id, tmsg, callback, expireDuration);
     }
@@ -793,7 +909,8 @@ void recallMessage(long long messageUid, GeneralOperationCallback *callback) {
                     if(isBegin) {
                         DB2::Instance()->COMMIT();
                     }
-                    
+
+                    messageList.reverse();
                     cb->onSuccess(messageList);
                 } else {
                     cb->onSuccess(messageList);
@@ -820,8 +937,8 @@ void loadRemoteMessages(const TConversation &conv, long long beforeUid, int coun
     publishTask(request, new LoadRemoteMessagesPublishCallback(callback, true), loadRemoteMessagesTopic, false);
 }
 
-int uploadGeneralMedia(std::string mediaData, int mediaType, UpdateMediaCallback *callback) {
-    mars::stn::MQTTPublishTask *publishTask = new mars::stn::MQTTPublishTask(new GetUploadTokenCallback(callback, mediaData));
+int uploadGeneralMedia(const std::string fileName, const std::string &mediaData, int mediaType, UpdateMediaCallback *callback) {
+    mars::stn::MQTTPublishTask *publishTask = new mars::stn::MQTTPublishTask(new GetUploadTokenCallback(callback, mediaData, getMediaPath(mediaType, fileName), fileName));
     publishTask->topic = getQiniuUploadTokenTopic;
     publishTask->length = sizeof(int);
     publishTask->body = new unsigned char[publishTask->length];
@@ -1217,7 +1334,7 @@ public:
             retList.push_back(ff.uid);
           }
 
-          MessageDB::Instance()->InsertFriendOrReplace(ff.uid, ff.state, ff.updateDt);
+          MessageDB::Instance()->InsertFriendOrReplace(ff.uid, ff.state, ff.updateDt, ff.alias);
         }
 
         if(StnCallBack::Instance()->m_getMyFriendsCB) {
@@ -1267,8 +1384,15 @@ void handleFriendRequest(const std::string &userId, bool accept, GeneralOperatio
 void deleteFriend(const std::string &userId, GeneralOperationCallback *callback) {
     IDBuf *request = new IDBuf();
     request->id = userId;
-    publishTask(request, new GeneralOperationPublishCallback(callback), DeleteFriendTopic, false);
+    publishTask(request, new DeleteFriendPublishCallback(callback, userId), DeleteFriendTopic, false);
 }
+        
+        void setFriendAlias(const std::string &userId, const std::string &alias, GeneralOperationCallback *callback) {
+            AddFriendRequest *request = new AddFriendRequest();
+            request->targetUid = userId;
+            request->reason = alias;
+            publishTask(request, new GeneralOperationPublishCallback(callback), SetFriendAliasTopic, false);
+        }
 
 void blackListRequest(const std::string &userId, bool blacked, GeneralOperationCallback *callback) {
     BlackUserRequest *request = new BlackUserRequest();
@@ -1277,11 +1401,11 @@ void blackListRequest(const std::string &userId, bool blacked, GeneralOperationC
     publishTask(request, new GeneralOperationPublishCallback(callback), BlackListUserTopic, false);
 }
 
-void (*createGroup)(const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback)
-= [](const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback) {
+void (*createGroup)(const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, int groupType, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback)
+= [](const std::string &groupId, const std::string &groupName, const std::string &groupPortrait, int groupType, const std::list<std::string> &groupMembers, const std::list<int> &notifyLines, TMessageContent &content, CreateGroupCallback *callback) {
     CreateGroupRequest *request = new CreateGroupRequest();
     request->group.groupInfo.targetId = groupId;
-    request->group.groupInfo.type = GroupType_Normal;
+    request->group.groupInfo.type = (GroupType)groupType;
     request->group.groupInfo.portrait = groupPortrait;
     request->group.groupInfo.name = groupName;
 
@@ -1390,6 +1514,10 @@ public:
                 tInfo.extra = info.extra;
                 tInfo.updateDt = info.updateDt;
                 tInfo.memberCount = info.memberCount;
+                tInfo.mute = info.mute;
+                tInfo.joinType = info.joinType;
+                tInfo.privateChat = info.privateChat;
+                tInfo.searchable = info.searchable;
                 retList.push_back(tInfo);
                 MessageDB::Instance()->InsertGroupInfo(tInfo);
             }
@@ -1522,7 +1650,24 @@ void (*transferGroup)(const std::string &groupId, const std::string &newOwner, c
 
     publishTask(request, new GeneralOperationPublishCallback(callback), transferGroupTopic, false);
 };
-
+        
+void SetGroupManager(const std::string &groupId, const std::list<std::string> userIds, int setOrDelete, const std::list<int> &notifyLines, TMessageContent &content, GeneralOperationCallback *callback) {
+    SetGroupManagerRequest *request = new SetGroupManagerRequest();
+    request->groupId = groupId;
+    request->type = setOrDelete;
+    
+    for(std::list<std::string>::const_iterator it = userIds.begin(); it != userIds.end(); it++) {
+        request->userIds.push_back(*it);
+    }
+    
+    for(std::list<int>::const_iterator it = notifyLines.begin(); it != notifyLines.end(); it++) {
+        request->toLines.push_back(*it);
+    }
+    
+    fillMessageContent(content, &(request->notifyContent));
+    publishTask(request, new GeneralOperationPublishCallback(callback), setGroupManagerTopic, false);
+        }
+        
 class GetUserInfoPublishCallback : public MQTTPublishCallback {
 public:
     GetUserInfoPublishCallback(GetUserInfoCallback *cb) : MQTTPublishCallback(), callback(cb) {}
@@ -1623,6 +1768,9 @@ void setDeviceToken(const std::string &appName, const std::string &deviceToken, 
     request->appName = appName;
     request->deviceToken = deviceToken;
     request->pushType = pushType;
+    if(request->pushType >= 16) {
+        request->pushType = 0; //protect code
+    }
 
     publishTask(request, new GeneralOperationPublishCallback(NULL), UploadDeviceTokenTopic, false);
 }
@@ -1678,7 +1826,7 @@ const std::string MQTTTask::description() const {
     ss << topic;
     return ss.str();
 }
-UploadTask::UploadTask(const std::string &data, const std::string &token, int mediaType, UploadMediaCallback *callback) : Task(), mData(data), mToken(token), mMediaType(mediaType), mCallback(callback) {
+        UploadTask::UploadTask(const std::string &data, const std::string &token, int mediaType, const std::string &key, int type, const std::string &date, const std::string &fileName, UploadMediaCallback *callback) : Task(), mData(data), mToken(token), mMediaType(mediaType), mKey(key), mType(type), mDate(date), mFileName(fileName), mCallback(callback) {
     user_context = this;
     channel_select = ChannelType_ShortConn;
     cmdid = UPLOAD_SEND_OUT_CMDID;
@@ -1769,14 +1917,20 @@ MQTTDisconnectTask::MQTTDisconnectTask() : MQTTTask(MQTT_MSG_DISCONNECT), flag(0
             free(tmp);
             return false;
         }
+
 bool setAuthInfo(const std::string &userId, const std::string &token) {
     if(!decodeToken(token, gToken, gSecret, gDbSecret)) {
         mars::stn::StnCallBack::Instance()->updateConnectionStatus(kConnectionStatusTokenIncorrect);
         return false;
     }
     mars::stn::SetCallback(StnCallBack::Instance());
-    DB2::Instance()->Open(gDbSecret);
-    DB2::Instance()->Upgrade();
+    DB2::Instance()->Open(gDbSecret, false);
+    
+    if(DB2::Instance()->Upgrade() == -1) {
+        DB2::Instance()->Open(gDbSecret, true);
+        DB2::Instance()->Upgrade();
+    }
+    
     MessageDB::Instance()->FailSendingMessages();
     StnCallBack::Instance()->onDBOpened();
     mqtt_init(mars::app::GetDeviceInfo().clientid.c_str());
@@ -1882,6 +2036,7 @@ void createChannel(const std::string &channelId, const std::string &channelName,
     request->extra = extra;
     request->secret = secret;
     request->callback = cb;
+    request->automatic = 0;
 
     publishTask(request, new CreateChannelPublishCallback(callback, tChannelInfo), createChannelTopic, false);
 }
@@ -2003,6 +2158,10 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
     request->channelId = channelId;
     request->head = updateDt;
     publishTask(request, new LoadChannelPublishCallback(callback), channelPullTopic, false);
+}
+        
+std::string GetImageThumbPara() {
+    return GUS.thumbPara;
 }
 
 #if WFCHAT_PROTO_SERIALIZABLE
@@ -2171,6 +2330,8 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
 
 //            std::list<std::string> mentionedTargets;
             getValue(value, "mentionedTargets", mentionedTargets);
+            
+            getValue(value, "extra", extra);
         }
 
 
@@ -2228,6 +2389,9 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
             }
             writer.EndArray();
 
+            writer.String("extra");
+            writer.String(extra);
+            
             writer.EndObject();
         }
 
@@ -2342,6 +2506,11 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
             getValue(value, "extra", extra);
 //            int64_t updateDt;
             getValue(value, "updateDt", updateDt);
+            
+            getValue(value, "mute", mute);
+            getValue(value, "joinType", joinType);
+            getValue(value, "privateChat", privateChat);
+            getValue(value, "searchable", searchable);
         }
 
         void TGroupInfo::Serialize(void *pwriter) const {
@@ -2374,6 +2543,23 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
             writer.String("updateDt");
             writer.Int64(updateDt);
 
+            
+//            int mute;
+            writer.String("mute");
+            writer.Int(mute);
+            
+//            int joinType;
+            writer.String("joinType");
+            writer.Int(joinType);
+            
+//            int privateChat;
+            writer.String("privateChat");
+            writer.Int(privateChat);
+            
+//            int searchable;
+            writer.String("searchable");
+            writer.Int(searchable);
+            
             writer.EndObject();
         }
 
@@ -2450,6 +2636,8 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
             getValue(value, "type", type);
 //            int64_t updateDt;
             getValue(value, "updateDt", updateDt);
+            getValue(value, "friendAlias", friendAlias);
+            getValue(value, "groupAlias", groupAlias);
         }
 
         void TUserInfo::Serialize(void *pwriter) const {
@@ -2490,6 +2678,12 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
 //            std::string extra;
             writer.String("extra");
             writer.String(extra);
+            
+            writer.String("friendAlias");
+            writer.String(friendAlias);
+            
+            writer.String("groupAlias");
+            writer.String(groupAlias);
 //            //0 normal; 1 robot; 2 thing;
 //            int type;
             writer.String("type");
@@ -2520,6 +2714,8 @@ void reloadChannelInfoFromRemote(const std::string &channelId, int64_t updateDt,
             getValue(value, "updateDt", updateDt);
 //            std::string extra;
             getValue(value, "extra", extra);
+
+            
 //            //0 normal; 1 not started; 2 end
 //            int state;
             getValue(value, "state", state);

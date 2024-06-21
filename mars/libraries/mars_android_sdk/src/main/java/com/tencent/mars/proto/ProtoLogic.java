@@ -1,5 +1,7 @@
 package com.tencent.mars.proto;
 
+import android.os.RemoteException;
+
 import com.tencent.mars.Mars;
 
 import java.util.ArrayList;
@@ -34,6 +36,11 @@ public class ProtoLogic {
         void onRecallMessage(long messageUid);
     }
 
+    public interface ILoadRemoteMessagesCallback {
+        void onSuccess(ProtoMessage[] messages);
+        void onFailure(int errorCode);
+    }
+
     public interface IGroupInfoUpdateCallback {
         void onGroupInfoUpdated(List<ProtoGroupInfo> updatedGroupInfos);
     }
@@ -51,7 +58,7 @@ public class ProtoLogic {
     }
 
     public interface IFriendListUpdateCallback {
-        void onFriendListUpdated();
+        void onFriendListUpdated(String[] updatedFriendList);
     }
 
     public interface IFriendRequestListUpdateCallback {
@@ -237,9 +244,9 @@ public class ProtoLogic {
         }
     }
 
-    public static void onFriendListUpdated() {
+    public static void onFriendListUpdated(String[] friendList) {
         if (friendListUpdateCallback != null) {
-            friendListUpdateCallback.onFriendListUpdated();
+            friendListUpdateCallback.onFriendListUpdated(friendList);
         }
     }
 
@@ -255,7 +262,7 @@ public class ProtoLogic {
         }
     }
 
-    public static native void connect(String host, int shortPort);
+    public static native boolean connect(String host, int shortPort);
 
     public static native void setAuthInfo(String userId, String token);
 
@@ -278,6 +285,14 @@ public class ProtoLogic {
     public static native ProtoConversationInfo getConversation(int conversationType, String target, int line);
 
     public static native ProtoMessage[] getMessages(int conversationType, String target, int line, long fromIndex, boolean before, int count, String withUser);
+    public static native ProtoMessage[] getMessagesEx(int[] conversationTypes, int[] lines, int[] contentTypes, long fromIndex, boolean before, int count, String withUser);
+    public static native ProtoMessage[] getMessagesEx2(int[] conversationTypes, int[] lines, int messageStatus, long fromIndex, boolean before, int count, String withUser);
+//    - (void)getRemoteMessages:(WFCCConversation *)conversation
+//    before:(long long)beforeMessageUid
+//    count:(NSUInteger)count
+//    success:(void(^)(NSArray<WFCCMessage *> *messages))successBlock
+//    error:(void(^)(int error_code))errorBlock
+    public static native void getRemoteMessages(int conversationType, String target, int line, long beforeMessageUid, int count, ILoadRemoteMessagesCallback callback);
 
     public static native ProtoMessage getMessage(long messageId);
 
@@ -289,7 +304,11 @@ public class ProtoLogic {
 
     public static native void clearUnreadStatus(int conversationType, String target, int line);
 
+    public static native void clearUnreadStatusEx(int[] conversationTypes, int[] lines);
+
     public static native void clearAllUnreadStatus();
+
+    public static native void clearMessages(int conversationType, String target, int line);
 
     public static native void setMediaMessagePlayed(long messageId);
 
@@ -302,13 +321,17 @@ public class ProtoLogic {
     public static native void setConversationSilent(int conversationType, String target, int line, boolean silent);
 
     //- (void)searchUser:(NSString *)keyword success:(void(^)(NSArray<WFCCUserInfo *> *machedUsers))successBlock error:(void(^)(int errorCode))errorBlock {
-    public static native void searchUser(String keyword, ISearchUserCallback callback);
+    public static native void searchUser(String keyword, boolean fuzzy, int page, ISearchUserCallback callback);
 
     //- (BOOL)isMyFriend:(NSString *)userId
     public static native boolean isMyFriend(String userId);
 
     //- (NSArray<NSString *> *)getMyFriendList:(BOOL)refresh
     public static native String[] getMyFriendList(boolean refresh);
+
+    public static native String getFriendAlias(String userId);
+
+    public static native void setFriendAlias(String userId, String alias, IGeneralCallback callback);
 
     //- (void)loadFriendRequestFromRemote
     public static native void loadFriendRequestFromRemote();
@@ -359,10 +382,11 @@ public class ProtoLogic {
     public static native void setBlackList(String userId, boolean isBlackListed, IGeneralCallback callback);
 
     //- (WFCCUserInfo *)getUserInfo:(NSString *)userId refresh:(BOOL)refresh
-    public static native ProtoUserInfo getUserInfo(String userId, boolean refresh);
+    public static native ProtoUserInfo getUserInfo(String userId, String groupId, boolean refresh);
+    public static native ProtoUserInfo[] getUserInfos(String[] userIds, String groupId);
 
     //- (void)uploadMedia:(NSData *)mediaData mediaType:(WFCCMediaType)mediaType success:(void(^)(NSString *remoteUrl))successBlock error:(void(^)(int error_code))errorBlock
-    public static native void uploadMedia(byte[] data, int mediaType, IUploadMediaCallback callback);
+    public static native void uploadMedia(String fileName, byte[] data, int mediaType, IUploadMediaCallback callback);
 
     //-(void)modifyMyInfo:(NSDictionary<NSNumber */*ModifyMyInfoType*/, NSString *> *)values
         //success:(void(^)())successBlock
@@ -394,7 +418,7 @@ public class ProtoLogic {
 //            success:(void(^)(NSString *groupId))successBlock
 //              error:(void(^)(int error_code))errorBlock;
 
-    public static native void createGroup(String groupId, String groupName, String groupPortrait, String[] memberIds, int[] notifyLines, ProtoMessageContent notifyMsg, IGeneralCallback2 callback);
+    public static native void createGroup(String groupId, String groupName, String groupPortrait, int groupType, String[] memberIds, int[] notifyLines, ProtoMessageContent notifyMsg, IGeneralCallback2 callback);
 //- (void)addMembers:(NSArray *)members
 //           toGroup:(NSString *)groupId
 //       notifyLines:(NSArray<NSNumber *> *)notifyLines
@@ -439,6 +463,15 @@ public class ProtoLogic {
 //    success:(void(^)())successBlock
 //    error:(void(^)(int error_code))errorBlock;
     public static native void modifyGroupAlias(String groupId, String newAlias, int[] notifyLines, ProtoMessageContent notifyMsg, IGeneralCallback callback);
+
+//- (void)setGroupManager:(NSString *)groupId
+//                  isSet:(BOOL)isSet
+//              memberIds:(NSArray<NSString *> *)memberIds
+//            notifyLines:(NSArray<NSNumber *> *)notifyLines
+//          notifyContent:(WFCCMessageContent *)notifyContent
+//                success:(void(^)(void))successBlock
+//                  error:(void(^)(int error_code))errorBlock {
+    public static native void setGroupManager(String groupId, boolean isSet, String[] memberIds, int[] notifyLines, ProtoMessageContent notifyMsg, IGeneralCallback callback);
 
 //- (NSArray<WFCCGroupMember *> *)getGroupMembers:(NSString *)groupId
 //                             forceUpdate:(BOOL)forceUpdate;
@@ -500,6 +533,9 @@ public class ProtoLogic {
     public static native void getChatRoomMembersInfo(String chatRoomId, int maxCount, IGetChatRoomMembersInfoCallback callback);
     public static native void joinChatRoom(String chatRoomId, IGeneralCallback callback);
     public static native void quitChatRoom(String chatRoomId, IGeneralCallback callback);
+
+
+    public static native String getImageThumbPara();
 
     public static native void registerMessageFlag(int contentType, int flag);
         /**

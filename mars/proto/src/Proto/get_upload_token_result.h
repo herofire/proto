@@ -20,6 +20,19 @@ namespace mars{
     namespace stn{
         class PBBase;
         
+        class GetUploadTokenRequest : public PBBase{
+        protected:
+            virtual const char* getTypeName();
+        public:
+            GetUploadTokenRequest() {}
+            virtual ~GetUploadTokenRequest() {}
+            virtual bool unserializeFromPBMsg(struct pbc_rmessage *msg, bool destroy);
+            virtual void serializeToPBMsg(struct pbc_wmessage* msg);
+            
+            std::string path;
+            int type;
+        };
+        
         
         class GetUploadTokenResult : public PBBase{
         protected:
@@ -33,6 +46,9 @@ namespace mars{
             std::string domain;
             std::string token;
             std::string server;
+            std::string date;
+            std::string path;
+            int type;
             int port;
         };
     }

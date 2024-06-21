@@ -183,7 +183,7 @@ int (*longlink_unpack)(const AutoBuffer& _packed, uint32_t& _cmdid, uint32_t& _s
                 unsigned int dataLen = 0;
                 unsigned char* pdata = (unsigned char* )decrypt_data((const unsigned char*)_packed.Ptr() + (_package_len-_body_len) + 1,(unsigned int) _body_len-1, &dataLen, false, true);
                 _body.Write(pdata, dataLen);
-            free(pdata);
+                free(pdata);
             }
             return LONGLINK_UNPACK_OK;
             break;

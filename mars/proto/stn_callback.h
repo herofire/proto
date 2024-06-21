@@ -32,7 +32,7 @@ namespace mars {
         class PullingMessageCallback {
             friend PullingMessagePublishCallback;
             virtual void onPullMsgSuccess(std::list<TMessage> messageList, int64_t current, int64_t head, int pullType, bool refreshSetting) = 0;
-            virtual void onPullMsgFailure(int errorCode, int pullType) = 0;
+            virtual void onPullMsgFailure(int errorCode, int pullType, bool refreshSetting) = 0;
         };
 
         
@@ -129,7 +129,7 @@ private:
     bool isPullingChatroomMsg;
     bool isPullingSetting;
     void onPullMsgSuccess(std::list<TMessage> messageList, int64_t current, int64_t head, int pullType, bool refreshSetting);
-    void onPullMsgFailure(int errorCode, int pullType);
+    void onPullMsgFailure(int errorCode, int pullType, bool refreshSetting);
     int64_t currentHead;
     int64_t currentChatroomHead;
     int64_t settingHead;

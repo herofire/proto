@@ -20,6 +20,7 @@ namespace mars{
             state = getInt(msg, keyState, 0);
             uid = getString(msg, keyUid, 0);
             updateDt = getInt64(msg, keyUpdateDt, 0);
+            alias = getString(msg, keyAlias, 0);
             if (destroy) {
                 finishRead(msg);
             }
@@ -30,6 +31,7 @@ namespace mars{
             setInt(msg, keyState, state);
             setString(msg, keyUid, uid);
             setInt64(msg, keyUpdateDt, updateDt);
+            setString(msg, keyAlias, alias);
         }
     }
 }

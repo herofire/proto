@@ -33,6 +33,7 @@ namespace mars{
             int state;
             std::string uid;
             int64_t updateDt;
+            std::string alias;
         };
     }
 }

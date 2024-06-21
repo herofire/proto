@@ -20,7 +20,7 @@ namespace mars{
             host = getString(msg, keyHost, 0);
             longPort = getInt(msg, keyLongPort, 0);
             shortPort = getInt(msg, keyShortPort, 0);
-            
+            thumbPara = getString(msg, keyThumbPara, 0);
             if (destroy) {
                 finishRead(msg);
             }
@@ -31,6 +31,7 @@ namespace mars{
             setString(msg, keyHost, host);
             setInt(msg, keyLongPort, longPort);
             setInt(msg, keyShortPort, shortPort);
+            setString(msg, keyThumbPara, thumbPara);
         }
     }
 }

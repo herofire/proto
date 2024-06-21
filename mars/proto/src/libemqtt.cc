@@ -248,7 +248,7 @@ int mqtt_connect(AutoBuffer& _packed)
 	// Variable header
 	uint8_t var_header[] = {
 		0x00,0x04,0x4d,0x51,'T','T', // Protocol name: MQTT
-		0x04, // Protocol version
+		0x05, // Protocol version
 		flags, // Connect flags
 		(uint8_t)(broker->alive>>8),
     (uint8_t)(broker->alive&0xFF), // Keep alive

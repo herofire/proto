@@ -17,11 +17,6 @@ BUILD_XLOG_PATHS = ("comm", "log")
 
 BUILD_MARS_PATHS = ("proto", "openssl", "comm", "baseevent", "log", "app", "sdt", "stn")
 
-COPY_MARS_FILES = {"../stn/proto/longlink_packer.h": "jni/longlink_packer.h",
-               "../stn/proto/shortlink_packer.h": "jni/shortlink_packer.h",
-                "../stn/proto/longlink_packer.cc": "jni/longlink_packer.cc.rewriteme",
-                "../stn/proto/shortlink_packer.cc": "jni/shortlink_packer.cc.rewriteme"
-                }
 
 
 def build_android_xlog_static_libs(_path="mars_xlog_sdk", _arch="armeabi", _lib_prefix="mars", _flag=""):
@@ -155,15 +150,6 @@ def build_android_mars_static_libs(_path="mars_android_sdk", _arch="armeabi", _l
                     shutil.copy(lib, cpu_symbols)
 
 
-
-    for (src, dst) in COPY_MARS_FILES.items():
-        dst_path = src_save_path + dst[:dst.rfind("/")]
-        if not os.path.exists(dst_path):
-            os.makedirs(dst_path)
-        if os.path.isfile(src):
-            shutil.copy(src, src_save_path + dst)
-
-    print("build succeed!")
     return 0
 
 def build_android_mars_shared_libs(_path="mars_android_sdk", _arch="armeabi", _lib_prefix="mars", _flag=""):

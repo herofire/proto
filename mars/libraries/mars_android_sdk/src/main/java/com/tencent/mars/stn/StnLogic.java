@@ -367,6 +367,24 @@ public class StnLogic {
      * @return
      */
     private static native ArrayList<String> getLoadLibraries();
+
+    /**
+     * 获取底层客户端ID
+     * @return clientId
+     */
+    public static native String clientId();
+
+    /**
+     * encode data
+     * @return data
+     */
+    public static native byte[] encodeData(byte[] rawData);
+
+    /**
+     * decode data
+     * @return data
+     */
+    public static native byte[] decodeData(byte[] data);
 //
 //    /**
 //     *  要求上层进行AUTH操作.

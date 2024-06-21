@@ -146,7 +146,7 @@ DeviceInfo GetDeviceInfo() {
 	xverbose_function();
 
 	static DeviceInfo s_info;
-	if (!s_info.clientid.empty() || !s_info.device.empty()) {
+	if (!s_info.clientid.empty()) {
 		return s_info;
 	}
 

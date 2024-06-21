@@ -50,6 +50,7 @@ namespace app {
 
 
 #ifndef ANDROID
+    static std::string sg_AppHome;
     static Callback* sg_callback = NULL;
     
     void SetCallback(Callback* const callback) {
@@ -151,7 +152,15 @@ namespace app {
         return mars::comm::ProxyInfo();
 
     }
-
+    
+    void SetAppHome(const std::string appHome) {
+        sg_AppHome = appHome;
+    }
+    
+    const std::string GetAppHome() {
+        return sg_AppHome;
+    }
+    
     std::string GetAppFilePath() {
         xassert2(sg_callback != NULL);
         return sg_callback->GetAppFilePath();
@@ -183,7 +192,7 @@ namespace app {
 		xassert2(sg_callback != NULL);
         
         static DeviceInfo device_info;
-        if (!device_info.clientid.empty() || !device_info.deviceversion.empty()) {
+        if (!device_info.clientid.empty()) {
             return device_info;
         }
         

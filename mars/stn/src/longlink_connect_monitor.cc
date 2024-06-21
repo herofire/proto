@@ -55,7 +55,7 @@ enum {
 };
 
 enum {
-    kForgroundOneMinute,
+    kForgroundThreeMinute,
     kForgroundTenMinute,
     kForgroundActive,
     kBackgroundActive,
@@ -63,8 +63,8 @@ enum {
 };
 
 static unsigned long const sg_interval[][5]  = {
-    {5,  10, 20,  30,  300},
-    {15, 30, 240, 300, 600},
+    {3,  10, 20,  30,  300},
+    {5, 30, 240, 300, 600},
     {0,  0,  0,   0,   0},
 };
 
@@ -75,9 +75,9 @@ static int __CurActiveState(const ActiveLogic& _activeLogic) {
 
     if (10 * 60 * 1000 <= ::gettickcount() - _activeLogic.LastForegroundChangeTime()) return kForgroundActive;
 
-    if (60 * 1000 <= ::gettickcount() - _activeLogic.LastForegroundChangeTime()) return kForgroundTenMinute;
+    if (3 * 60 * 1000 <= ::gettickcount() - _activeLogic.LastForegroundChangeTime()) return kForgroundTenMinute;
 
-    return kForgroundOneMinute;
+    return kForgroundThreeMinute;
 }
 
 static unsigned long __Interval(int _type, const ActiveLogic& _activelogic) {
@@ -100,7 +100,7 @@ static unsigned long __Interval(int _type, const ActiveLogic& _activelogic) {
 
         } else {
             // default value
-			interval += rand() % (20);
+			interval += rand() % (10);
         }
     }
 

@@ -48,6 +48,8 @@ DEFINE_FIND_CLASS(KNetJava2C, "com/tencent/mars/stn/StnLogic")
 
 extern "C" {
 
+extern jstring cstring2jstring(JNIEnv *env, const char* str);
+
 /*
  * Class:     com_tencent_mars_stn_StnLogic
  * Method:    getLoadLibraries
@@ -99,6 +101,40 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_stn_StnLogic_stopSignalling
 JNIEXPORT void JNICALL Java_com_tencent_mars_stn_StnLogic_setClientVersion
   (JNIEnv *_env, jclass, jint _client_version) {
 	//mars::stn::SetClientVersion(_client_version);
+}
+
+//public static native String clientId();
+JNIEXPORT jstring JNICALL Java_com_tencent_mars_stn_StnLogic_clientId
+  (JNIEnv *_env, jclass) {
+    return cstring2jstring(_env, mars::stn::GetEncodedCid().c_str());
+}
+
+//public static native byte[] encodeData(byte[] rawData);
+JNIEXPORT jbyteArray JNICALL Java_com_tencent_mars_stn_StnLogic_encodeData
+  (JNIEnv *_env, jclass, jbyteArray jdata) {
+    jsize len  = _env->GetArrayLength(jdata);
+    char* data = (char*)_env->GetByteArrayElements(jdata, 0);
+
+    std::string encodeData = mars::stn::GetEncodeDataEx(std::string(data, len));
+
+    jbyte *by = (jbyte*)encodeData.c_str();
+    jbyteArray jarray = _env->NewByteArray(encodeData.length());
+    _env->SetByteArrayRegion(jarray, 0, encodeData.length(), by);
+    return jarray;
+}
+
+//public static native byte[] decodeData(byte[] data);
+JNIEXPORT jbyteArray JNICALL Java_com_tencent_mars_stn_StnLogic_decodeData
+  (JNIEnv *_env, jclass, jbyteArray jdata) {
+    jsize len  = _env->GetArrayLength(jdata);
+    char* data = (char*)_env->GetByteArrayElements(jdata, 0);
+
+    std::string encodeData = mars::stn::GetDecodeData(std::string(data, len));
+
+    jbyte *by = (jbyte*)encodeData.c_str();
+    jbyteArray jarray = _env->NewByteArray(encodeData.length());
+    _env->SetByteArrayRegion(jarray, 0, encodeData.length(), by);
+    return jarray;
 }
 
 }

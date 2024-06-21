@@ -16,6 +16,7 @@ public class ProtoMessageContent {
     private String localMediaPath;
     private int mentionedType;
     private String[] mentionedTargets;
+    private String extra;
 
     public int getMentionedType() {
         return mentionedType;
@@ -103,5 +104,13 @@ public class ProtoMessageContent {
 
     public void setLocalMediaPath(String localMediaPath) {
         this.localMediaPath = localMediaPath;
+    }
+
+    public String getExtra(){
+        return this.extra;
+    }
+
+    public void setExtra(String extra){
+        this.extra = extra;
     }
 }

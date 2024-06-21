@@ -230,6 +230,7 @@ jobject convertProtoMessage(JNIEnv *env, const mars::stn::TMessage *tMessage) {
         }
         SetObjectValue_ObjectArray(env, objContent, jcontent, "setMentionedTargets", jo_array, "([Ljava/lang/String;)V");
     }
+    SetObjectValue_String(env, objContent, jcontent, "setExtra", tMessage->content.extra.c_str());
 
     SetObjectValue_Object(env, obj, jmsg, "setContent", objContent, "(Lcn/wildfirechat/model/ProtoMessageContent;)V");
 
@@ -306,7 +307,7 @@ jobject convertProtoUserInfo(JNIEnv *env, const mars::stn::TUserInfo &tUserInfo)
     SetObjectValue_String(env, obj, juserInfo, "setEmail", tUserInfo.email.c_str());
 
 //    userInfo.address = [NSString stringWithUTF8String:tui.address.c_str()];
-    SetObjectValue_String(env, obj, juserInfo, "setAdress", tUserInfo.address.c_str());
+    SetObjectValue_String(env, obj, juserInfo, "setAddress", tUserInfo.address.c_str());
 
 //    userInfo.company = [NSString stringWithUTF8String:tui.company.c_str()];
     SetObjectValue_String(env, obj, juserInfo, "setCompany", tUserInfo.company.c_str());
@@ -316,6 +317,10 @@ jobject convertProtoUserInfo(JNIEnv *env, const mars::stn::TUserInfo &tUserInfo)
 
 //    userInfo.extra = [NSString stringWithUTF8String:tui.extra.c_str()];
     SetObjectValue_String(env, obj, juserInfo, "setExtra", tUserInfo.extra.c_str());
+
+    SetObjectValue_String(env, obj, juserInfo, "setFriendAlias", tUserInfo.friendAlias.c_str());
+
+    SetObjectValue_String(env, obj, juserInfo, "setGroupAlias", tUserInfo.groupAlias.c_str());
 
 //    userInfo.updateDt = tui.updateDt;
     SetObjectValue_LongLong(env, obj, juserInfo, "setUpdateDt", tUserInfo.updateDt);
@@ -384,6 +389,19 @@ jobject convertProtoGroupInfo(JNIEnv *env, const mars::stn::TGroupInfo &tGroupIn
     //groupInfo.memberCount = tgi.memberCount;
     SetObjectValue_Int(env, obj, jgroupInfo, "setMemberCount", tGroupInfo.memberCount);
 
+    //groupInfo.mute = tgi.mute;
+    SetObjectValue_Int(env, obj, jgroupInfo, "setMute", tGroupInfo.mute);
+
+    //groupInfo.joinType = tgi.joinType;
+    SetObjectValue_Int(env, obj, jgroupInfo, "setJoinType", tGroupInfo.joinType);
+
+    //groupInfo.privateChat = tgi.privateChat;
+    SetObjectValue_Int(env, obj, jgroupInfo, "setPrivateChat", tGroupInfo.privateChat);
+
+    //groupInfo.searchable = tgi.searchable;
+    SetObjectValue_Int(env, obj, jgroupInfo, "setSearchable", tGroupInfo.searchable);
+
+
     return obj;
 }
 
@@ -412,6 +430,7 @@ jobject convertProtoChatRoomInfo(JNIEnv *env, jstring chatroomId, const mars::st
 
     return obj;
 }
+
 jobject convertProtoChatRoomMembersInfo(JNIEnv *env, const mars::stn::TChatroomMemberInfo &info) {
 /**
         memberInfo.memberCount = info.memberCount;
@@ -567,7 +586,7 @@ public:
 };
 
 
-DEFINE_FIND_STATIC_METHOD(KProto2Java_onFriendListUpdated, KProto2Java, "onFriendListUpdated", "()V")
+DEFINE_FIND_STATIC_METHOD(KProto2Java_onFriendListUpdated, KProto2Java, "onFriendListUpdated", "([Ljava/lang/String;)V")
 class GFLCB : public mars::stn::GetMyFriendsCallback {
 public:
     void onSuccess(std::list<std::string> friendIdList) {
@@ -576,9 +595,8 @@ public:
             ScopeJEnv scope_jenv(cache_instance->GetJvm());
             JNIEnv *env = scope_jenv.GetEnv();
 
-            if(friendIdList.size() > 0) {
-                JNU_CallStaticMethodByMethodInfo(env, KProto2Java_onFriendListUpdated);
-            }
+            jobjectArray jFriendIdList = convertStringList(env, friendIdList);
+            JNU_CallStaticMethodByMethodInfo(env, KProto2Java_onFriendListUpdated, jFriendIdList);
         }
     }
     void onFalure(int errorCode) {
@@ -639,10 +657,10 @@ JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getLoadLibrarie
 }
 
 //public static native void connect(String host, int shortPort);
-JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_connect
+JNIEXPORT jboolean JNICALL Java_com_tencent_mars_proto_ProtoLogic_connect
 		(JNIEnv *_env, jclass clz, jstring host, jint shortPort) {
 	std::string ipAddress(ScopedJstring(_env, host).GetChar());
-	mars::stn::Connect(ipAddress, shortPort);
+	return mars::stn::Connect(ipAddress, shortPort);
 }
 
 
@@ -855,6 +873,53 @@ public:
     }
 
     virtual ~IMGeneralOperationCallback() {
+        JNIEnv *env = ScopeJEnv(VarCache::Singleton()->GetJvm()).GetEnv();
+        env->DeleteGlobalRef(mObj);
+    }
+};
+
+class IMLoadRemoteMessagesCallback : public mars::stn::LoadRemoteMessagesCallback {
+private:
+    jobject mObj;
+public:
+    IMLoadRemoteMessagesCallback(jobject obj) : mars::stn::LoadRemoteMessagesCallback(), mObj(obj) {};
+    void onSuccess(const std::list<mars::stn::TMessage> &messageList) {
+         JNIEnv *env = ScopeJEnv(VarCache::Singleton()->GetJvm()).GetEnv();
+         jclass cls = env->GetObjectClass(mObj);
+         if (cls != NULL) {
+             jmethodID nMethodId = env->GetMethodID(cls, "onSuccess", "([Lcn/wildfirechat/model/ProtoMessage;)V");
+             if (env->ExceptionCheck()) {
+                 printf("--%s:exception\n", __FUNCTION__);
+                env->ExceptionClear();
+             }
+             if (nMethodId != NULL) {
+                jobjectArray jo_array = convertProtoMessageList(env, messageList);
+                env->CallVoidMethod(mObj, nMethodId, jo_array);
+                env->DeleteLocalRef(jo_array);
+             }
+             env->DeleteLocalRef(cls);
+         }
+
+        delete this;
+    }
+    void onFalure(int errorCode) {
+         JNIEnv *env = ScopeJEnv(VarCache::Singleton()->GetJvm()).GetEnv();
+         jclass cls = env->GetObjectClass(mObj);
+         if (cls != NULL) {
+             jmethodID nMethodId = env->GetMethodID(cls, "onFailure", "(I)V");
+             if (env->ExceptionCheck()) {
+                 printf("--%s:exception\n", __FUNCTION__);
+                env->ExceptionClear();
+             }
+             if (nMethodId != NULL) {
+                 env->CallVoidMethod(mObj, nMethodId, (jint)errorCode);
+             }
+             env->DeleteLocalRef(cls);
+         }
+        delete this;
+    }
+
+    virtual ~IMLoadRemoteMessagesCallback() {
         JNIEnv *env = ScopeJEnv(VarCache::Singleton()->GetJvm()).GetEnv();
         env->DeleteGlobalRef(mObj);
     }
@@ -1120,6 +1185,9 @@ mars::stn::TMessage convertMessage(JNIEnv *env, jobject msg) {
     tMessage.content.mentionedTargets = jarrayToStringList(env, jstringArray);
     env->DeleteLocalRef(jstringArray);
 
+    field = env->GetFieldID(jcontent, "extra", "Ljava/lang/String;");
+    str = (jstring)env->GetObjectField(content, field);
+    tMessage.content.extra = jstringToString(env, str);
 
     env->DeleteLocalRef(str);
 
@@ -1210,6 +1278,12 @@ void convertMessageContent(JNIEnv *env, jobject content, mars::stn::TMessageCont
     jobjectArray jstringArray = static_cast<jobjectArray>(env->GetObjectField(content, field));
     tcontent.mentionedTargets = jarrayToStringList(env, jstringArray);
     env->DeleteLocalRef(jstringArray);
+
+    field = env->GetFieldID(jcontent, "extra", "Ljava/lang/String;");
+    str = (jstring)env->GetObjectField(content, field);
+    tcontent.extra = jstringToString(env, str);
+
+    env->DeleteLocalRef(str);
 }
 
 
@@ -1364,6 +1438,109 @@ JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getMessages
     return convertProtoMessageList(_env, messages);
 }
 
+//public static native ProtoMessage[] getMessagesEx(int[] conversationTypes, int[] lines, int[] contentTypes, long fromIndex, boolean before, int count, String withUser);
+JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getMessagesEx
+		(JNIEnv *_env, jclass clz, jintArray typeArray, jintArray lineArray, jintArray contentTypes, jlong fromIndex, jboolean before, jint jcount, jstring withUser) {
+	    std::list<int> types;
+            int count = _env->GetArrayLength(typeArray);
+            if (count == 0) {
+                printf("--%s:idcnt", __FUNCTION__);
+                return NULL;
+            }
+
+            jint *jtypes = _env->GetIntArrayElements(typeArray, NULL);
+            if (jtypes == NULL) {
+                printf("--%s:typeids", __FUNCTION__);
+                return NULL;
+            }
+            for (int i = 0; i < count; i++) {
+                types.push_back((int)(jtypes[i]));
+            }
+
+        std::list<int> ls;
+            count = _env->GetArrayLength(lineArray);
+            if (count == 0) {
+                printf("--%s:idcnt", __FUNCTION__);
+                return NULL;
+            }
+
+            jtypes = _env->GetIntArrayElements(lineArray, NULL);
+            if (jtypes == NULL) {
+                printf("--%s:typeids", __FUNCTION__);
+                return NULL;
+            }
+            for (int i = 0; i < count; i++) {
+                ls.push_back((int)(jtypes[i]));
+            }
+
+        std::list<int> cts;
+                    count = _env->GetArrayLength(contentTypes);
+                    if (count > 0) {
+                        jtypes = _env->GetIntArrayElements(contentTypes, NULL);
+                        if (jtypes == NULL) {
+                            printf("--%s:typeids", __FUNCTION__);
+                            return NULL;
+                        }
+                        for (int i = 0; i < count; i++) {
+                            cts.push_back((int)(jtypes[i]));
+                        }
+                    }
+
+
+
+    std::list<mars::stn::TMessage> messages = mars::stn::MessageDB::Instance()->GetMessages(types, ls, cts, (bool)before, (int)jcount, (long)fromIndex, jstringToString(_env, withUser));
+    return convertProtoMessageList(_env, messages);
+}
+//public static native ProtoMessage[] getMessagesEx2(int[] conversationTypes, int[] lines, int messageStatus, long fromIndex, boolean before, int count, String withUser);
+JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getMessagesEx2
+		(JNIEnv *_env, jclass clz, jintArray typeArray, jintArray lineArray, jint messageStatus, jlong fromIndex, jboolean before, jint jcount, jstring withUser) {
+	    std::list<int> types;
+            int count = _env->GetArrayLength(typeArray);
+            if (count == 0) {
+                printf("--%s:idcnt", __FUNCTION__);
+                return NULL;
+            }
+
+            jint *jtypes = _env->GetIntArrayElements(typeArray, NULL);
+            if (jtypes == NULL) {
+                printf("--%s:typeids", __FUNCTION__);
+                return NULL;
+            }
+            for (int i = 0; i < count; i++) {
+                types.push_back((int)(jtypes[i]));
+            }
+
+        std::list<int> ls;
+            count = _env->GetArrayLength(lineArray);
+            if (count == 0) {
+                printf("--%s:idcnt", __FUNCTION__);
+                return NULL;
+            }
+
+            jtypes = _env->GetIntArrayElements(lineArray, NULL);
+            if (jtypes == NULL) {
+                printf("--%s:typeids", __FUNCTION__);
+                return NULL;
+            }
+            for (int i = 0; i < count; i++) {
+                ls.push_back((int)(jtypes[i]));
+            }
+
+
+    std::list<mars::stn::TMessage> messages = mars::stn::MessageDB::Instance()->GetMessages(types, ls, messageStatus, (bool)before, (int)jcount, (long)fromIndex, jstringToString(_env, withUser));
+    return convertProtoMessageList(_env, messages);
+}
+
+//public static native void getRemoteMessages(int conversationType, String target, int line, long beforeMessageUid, int count, ILoadRemoteMessagesCallback callback);
+JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_getRemoteMessages
+		(JNIEnv *_env, jclass clz, jint type, jstring target, jint line, jlong beforeMessageUid, jint count, jobject callback) {
+	    mars::stn::TConversation conv;
+        conv.target = jstringToString(_env, target);
+        conv.line = line;
+        conv.conversationType = type;
+
+        mars::stn::loadRemoteMessages(conv, beforeMessageUid, count, new IMLoadRemoteMessagesCallback(_env->NewGlobalRef(callback)));
+}
 
 //public static native ProtoMessage getMessage(long messageId);
 JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getMessage
@@ -1431,10 +1608,49 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_clearUnreadStatus
     mars::stn::MessageDB::Instance()->ClearUnreadStatus((int)type, jstringToString(_env, target), (int)line);
 }
 
+JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_clearUnreadStatusEx
+    (JNIEnv *_env, jclass clz, jintArray typeArray, jintArray lineArray) {
+
+    std::list<int> types;
+    int count = _env->GetArrayLength(typeArray);
+    if (count == 0) {
+        return;
+    }
+
+    jint *jtypes = _env->GetIntArrayElements(typeArray, NULL);
+    if (jtypes == NULL) {
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        types.push_back((int)(jtypes[i]));
+    }
+
+    std::list<int> ls;
+    count = _env->GetArrayLength(lineArray);
+    if (count == 0) {
+        return;
+    }
+
+    jtypes = _env->GetIntArrayElements(lineArray, NULL);
+    if (jtypes == NULL) {
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        ls.push_back((int)(jtypes[i]));
+    }
+    mars::stn::MessageDB::Instance()->ClearUnreadStatus(types, ls);
+}
+
 //public static native void clearAllUnreadStatus();
 JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_clearAllUnreadStatus
 		(JNIEnv *_env, jclass clz) {
     mars::stn::MessageDB::Instance()->ClearAllUnreadStatus();
+}
+
+//public static native void clearMessages(int conversationType, String target, int line);
+JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_clearMessages
+        (JNIEnv *_env, jclass clz, jint type, jstring target, jint line) {
+    mars::stn::MessageDB::Instance()->ClearMessages((int)type, jstringToString(_env, target), (int)line);
 }
 
 //public static native void setMediaMessagePlayed(long messageId);
@@ -1538,6 +1754,13 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_quitChatRoom(JNIEn
     mars::stn::quitChatroom(jstringToString(_env, chatroomId), new IMGeneralOperationCallback(_env->NewGlobalRef(callback)));
 }
 
+//public static native String getImageThumbPara();
+JNIEXPORT jstring JNICALL Java_com_tencent_mars_proto_ProtoLogic_getImageThumbPara
+		(JNIEnv *_env, jclass clz) {
+    std::string setting = mars::stn::GetImageThumbPara();
+    return cstring2jstring(_env, setting.c_str());
+}
+
 //public static native void getChatRoomInfo(String chatRoomId, long lastUpdateDt, IGetChatRoomInfoCallback callback);
 JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_getChatRoomInfo
 		(JNIEnv *_env, jclass clz, jstring chatroomId, jlong updateDt, jobject callback ) {
@@ -1613,8 +1836,8 @@ public:
 
 //public static native void searchUser(String keyword, ISearchUserCallback callback);
 JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_searchUser
-		(JNIEnv *_env, jclass clz, jstring keyword, jobject callback) {
-    mars::stn::searchUser(ScopedJstring(_env, keyword).GetChar(), true, 0, new IMSearchUserCallback(_env->NewGlobalRef(callback)));
+		(JNIEnv *_env, jclass clz, jstring keyword, jboolean fuzzy, jint page, jobject callback) {
+    mars::stn::searchUser(ScopedJstring(_env, keyword).GetChar(), fuzzy, page, new IMSearchUserCallback(_env->NewGlobalRef(callback)));
 }
 
 //public static native boolean isMyFriend(String userId);
@@ -1629,6 +1852,19 @@ JNIEXPORT jobjectArray JNICALL Java_com_tencent_mars_proto_ProtoLogic_getMyFrien
     std::list<std::string> friendList = mars::stn::MessageDB::Instance()->getMyFriendList(refresh);
 
     return convertStringList(_env, friendList);
+}
+
+//public static native boolean getFriendAlias(String userId);
+JNIEXPORT jstring JNICALL Java_com_tencent_mars_proto_ProtoLogic_getFriendAlias
+		(JNIEnv *_env, jclass clz, jstring userId)  {
+    std::string alias =mars::stn::MessageDB::Instance()->GetFriendAlias(ScopedJstring(_env, userId).GetChar());
+    return cstring2jstring(_env, alias.c_str());
+}
+
+//public static native boolean setFriendAlias(String userId, String alias, IGeneralCallback callback);
+JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_setFriendAlias
+		(JNIEnv *_env, jclass clz, jstring userId, jstring alias, jobject callback)  {
+    mars::stn::setFriendAlias(ScopedJstring(_env, userId).GetChar(),  ScopedJstring(_env, alias).GetChar(), new IMGeneralOperationCallback(_env->NewGlobalRef(callback)));
 }
 
 //    public static native boolean isBlackListed(String userId);
@@ -1738,13 +1974,30 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_deleteFriend
 
 //public static native ProtoUserInfo getUserInfo(String userId, boolean refresh);
 JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getUserInfo
-		(JNIEnv *_env, jclass clz, jstring userId, jboolean refresh) {
-    mars::stn::TUserInfo tui = mars::stn::MessageDB::Instance()->getUserInfo(ScopedJstring(_env, userId).GetChar(), refresh);
+		(JNIEnv *_env, jclass clz, jstring userId, jstring groupId, jboolean refresh) {
+    mars::stn::TUserInfo tui = mars::stn::MessageDB::Instance()->getUserInfo(ScopedJstring(_env, userId).GetChar(), ScopedJstring(_env, groupId).GetChar(), refresh);
     if (!tui.uid.empty()) {
         jobject userInfo = convertProtoUserInfo(_env, tui);
         return userInfo;
     }
     return NULL;
+}
+
+//public static native ProtoUserInfo[] getUserInfos(List<String> userIds, String groupId);
+JNIEXPORT jobject JNICALL Java_com_tencent_mars_proto_ProtoLogic_getUserInfos
+		(JNIEnv *_env, jclass clz, jobjectArray userIds, jstring groupId) {
+    std::list<std::string> uids = jarrayToStringList(_env, userIds);
+    std::list<mars::stn::TUserInfo> tuis = mars::stn::MessageDB::Instance()->getUserInfos(uids, ScopedJstring(_env, groupId).GetChar());
+
+    int i = 0;
+    jobjectArray jo_array = _env->NewObjectArray(tuis.size(), (jclass) g_objUserInfo, 0);
+    for (std::list<mars::stn::TUserInfo>::iterator it = tuis.begin(); it != tuis.end(); it++) {
+        jobject userInfo = convertProtoUserInfo(_env, *it);
+        _env->SetObjectArrayElement(jo_array, i++, userInfo);
+        _env->DeleteLocalRef(userInfo);
+    }
+
+    return jo_array;
 }
 
 class GeneralUpdateMediaCallback : public mars::stn::UpdateMediaCallback {
@@ -1813,12 +2066,12 @@ public:
   }
 };
 
-//public static native void uploadMedia(byte[] data, int mediaType, IUploadMediaCallback callback);
+//public static native void uploadMedia(String fileName, byte[] data, int mediaType, IUploadMediaCallback callback);
 JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_uploadMedia
-		(JNIEnv *_env, jclass clz, jbyteArray jdata, jint mediaType, jobject callback) {
+		(JNIEnv *_env, jclass clz, jstring jfileName, jbyteArray jdata, jint mediaType, jobject callback) {
     jsize len  = _env->GetArrayLength(jdata);
     char* data = (char*)_env->GetByteArrayElements(jdata, 0);
-    mars::stn::uploadGeneralMedia(std::string((char *)data, len), mediaType, new GeneralUpdateMediaCallback(_env->NewGlobalRef(callback)));
+    mars::stn::uploadGeneralMedia(ScopedJstring(_env, jfileName).GetChar(), std::string((char *)data, len), mediaType, new GeneralUpdateMediaCallback(_env->NewGlobalRef(callback)));
 }
 
 //public static native void modifyMyInfo(Map<Integer, String> values, IGeneralCallback callback);
@@ -2013,7 +2266,7 @@ public:
 
 //public static native void createGroup(String groupId, String groupName, String groupPortrait, String[] memberIds, int[] notifyLines, ProtoMessage notifyMsg, IGeneralCallback2 callback);
 JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_createGroup
-		(JNIEnv *_env, jclass clz, jstring groupId, jstring groupName, jstring groupPortrait, jobjectArray memberArray, jintArray lineArray, jobject notifyMsg, jobject callback) {
+		(JNIEnv *_env, jclass clz, jstring groupId, jstring groupName, jstring groupPortrait, jint groupType, jobjectArray memberArray, jintArray lineArray, jobject notifyMsg, jobject callback) {
     std::list<std::string> memberList;
         int count = _env->GetArrayLength(memberArray);
         if (count == 0) {
@@ -2046,7 +2299,7 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_createGroup
     mars::stn::TMessageContent tcontent;
     convertMessageContent(_env, notifyMsg, tcontent);
 
-    mars::stn::createGroup(ScopedJstring(_env, groupId).GetCharWithDefault(""), ScopedJstring(_env, groupName).GetCharWithDefault(""), ScopedJstring(_env, groupPortrait).GetCharWithDefault(""), memberList, ls, tcontent, new IMCreateGroupCallback(_env->NewGlobalRef(callback)));
+    mars::stn::createGroup(ScopedJstring(_env, groupId).GetCharWithDefault(""), ScopedJstring(_env, groupName).GetCharWithDefault(""), ScopedJstring(_env, groupPortrait).GetCharWithDefault(""), (int)groupType, memberList, ls, tcontent, new IMCreateGroupCallback(_env->NewGlobalRef(callback)));
 }
 
 //public static native void addMembers(String groupId, String[] memberIds, int[] notifyLines, ProtoMessage notifyMsg, IGeneralCallback callback);
@@ -2266,6 +2519,46 @@ JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_modifyGroupAlias
     mars::stn::modifyGroupAlias(ScopedJstring(_env, groupId).GetChar(), ScopedJstring(_env, newAlias).GetChar(), ls, tcontent, new IMGeneralOperationCallback(_env->NewGlobalRef(callback)));
 }
 
+//public static native void setGroupManager(String groupId, boolean isSet, String[] memberIds, int[] notifyLines, ProtoMessageContent notifyMsg, IGeneralCallback callback);
+JNIEXPORT void JNICALL Java_com_tencent_mars_proto_ProtoLogic_setGroupManager
+		(JNIEnv *_env, jclass clz, jstring groupId, jboolean isSet, jobjectArray memberArray, jintArray lineArray, jobject notifyMsg, jobject callback) {
+
+        std::list<std::string> memberList;
+        int count = _env->GetArrayLength(memberArray);
+        if (count == 0) {
+            printf("--%s:idcnt", __FUNCTION__);
+            return;
+        }
+
+        for (int i = 0; i < count; i++) {
+            jstring jmemberId = (jstring)_env->GetObjectArrayElement(memberArray, i );
+            memberList.push_back(ScopedJstring(_env, jmemberId).GetChar());
+        }
+
+
+        std::list<int> ls;
+        count = _env->GetArrayLength(lineArray);
+        if (count == 0) {
+            printf("--%s:idcnt", __FUNCTION__);
+            return ;
+        }
+
+        jint *jtypes = _env->GetIntArrayElements(lineArray, NULL);
+        if (jtypes == NULL) {
+            printf("--%s:typeids", __FUNCTION__);
+            return ;
+        }
+        for (int i = 0; i < count; i++) {
+            ls.push_back((int)(jtypes[i]));
+        }
+
+    mars::stn::TMessageContent tcontent;
+    convertMessageContent(_env, notifyMsg, tcontent);
+
+    mars::stn::SetGroupManager(ScopedJstring(_env, groupId).GetChar(), memberList, isSet ? 1 : 0, ls, tcontent, new IMGeneralOperationCallback(_env->NewGlobalRef(callback)));
+}
+
+
 jobject convertProtoGroupMember(JNIEnv *env, const mars::stn::TGroupMember &tGroupMember) {
     jclass jgroupMember = (jclass)g_objGroupMember;
     jobject obj = env->AllocObject(jgroupMember);
@@ -2281,6 +2574,8 @@ jobject convertProtoGroupMember(JNIEnv *env, const mars::stn::TGroupMember &tGro
 
     //member.type = (WFCCGroupMemberType)it->type;
     SetObjectValue_Int(env, obj, jgroupMember, "setType", tGroupMember.type);
+
+    SetObjectValue_LongLong(env, obj, jgroupMember, "setUpdateDt", tGroupMember.updateDt);
 
     return obj;
 }

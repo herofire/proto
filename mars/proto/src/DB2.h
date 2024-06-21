@@ -27,6 +27,7 @@ namespace mars {
             RecyclableStatement(sqlite3 *db, const std::string &sql, int &error);
             RecyclableStatement(DB2 *db2, const std::string &sql, int &error);
             bool executeSelect();
+            bool executeSelectEx(int &isDbCorrupt);
             bool executeInsert(long *rowId);
             bool executeDelete(long *changes);
             bool executeUpdate(long *changes);
@@ -78,9 +79,10 @@ namespace mars {
             
         public:
             static DB2* Instance();
-            void Open(const std::string &sec);
-            void Upgrade();
+            void Open(const std::string &sec, bool rebuildDb);
+            int Upgrade();
             bool isOpened();
+            bool CheckDB(const std::string &sec);
 #ifdef __ANDROID__
             std::string GetSelectSqlEx(const std::string &tableNameLeft, const std::list<std::string> &columnsLeft, const std::string &tableNameRight, const std::list<std::string> &columnsRight, const std::string &where,const std::string &orderBy = "", int limit = 0, int offset = 0, const std::string &groupBy = "");
             
@@ -132,6 +134,8 @@ namespace mars {
             bool UpdateUserServerAddress(const std::string &userId, const UserServerAddress &userServer);
             UserServerAddress GetUserServerAddress(const std::string &userId);
             friend RecyclableStatement;
+            
+            bool newCreatedDB;
         private:
             static DB2* instance_;
             
@@ -141,8 +145,14 @@ namespace mars {
             bool UpgradeDB2Version3();
             bool UpgradeDB3Version4();
             bool UpgradeDB4Version5();
+            bool UpgradeDB5Version6();
+            bool UpgradeDB6Version7();
+            bool UpgradeDB7Version8();
+            bool UpgradeDB8Version9();
+            bool UpgradeDB9Version10();
+            bool UpgradeDB10Version11();
             
-            bool IsTableExist(std::string tableName);
+            int IsTableExist(std::string tableName);
             bool executeSql(const std::string &sql);
             bool opened;
             sqlite3 *m_db;
